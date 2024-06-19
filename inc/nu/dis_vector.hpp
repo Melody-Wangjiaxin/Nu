@@ -11,7 +11,7 @@ extern "C" {
 #include "nu/proclet.hpp"
 #include "nu/utils/mutex.hpp"
 #include "nu/utils/spin_lock.hpp"
-#include "nu/utils/sync_hash_map.hpp"
+#include "nu/utils/sync_vector.hpp"
 
 namespace nu {
 
@@ -19,7 +19,7 @@ template <typename T>
 class DistributedVector {
     public:
         constexpr static uint32_t kDefaultPowerNumShards = 13;
-        constexpr static uint64_t kNumBucketsPerShard = NumBuckets;
+        constexpr static uint64_t kNumPerShard = 32768;
 
         using VectorShard = SyncVector<T, std::allocator<T>, Mutex>;
 
@@ -29,10 +29,10 @@ class DistributedVector {
         DistributedVector &operator=(DistributedVector &&);
         DistributedVector();
 
+        std::optional<T> get(uint64_t &&idx);
+        std::optional<T> get(uint64_t &&idx, bool *is_local);
         template <typename T1>
-        std::optional<T1> get(uint64_t &&idx);
-        template <typename T1>
-        std::optional<T1> get(uint64_t &&idx, bool *is_local);
+        void put(uint64_t &&idx, T1 &&v);
         template <typename T1>
         void push_back(T1 &&v);
         bool remove(uint64_t &&idx);
@@ -40,6 +40,8 @@ class DistributedVector {
 
         template <typename T1>
         Future<std::optional<T1>> get_async(uint64_t &&idx);
+        template <typename T1>
+        Future<void> put_async(uint64_t &&idx, T1 &&v);
         template <typename T1>
         Future<void> push_back_async(T1 &&v);
         Future<bool> remove_async(uint64_t &&idx);
@@ -57,24 +59,24 @@ class DistributedVector {
 
     private:
         struct RefCnter {
-        std::vector<Proclet<VectorShard>> shards;
+            std::vector<Proclet<VectorShard> > shards;
         };
 
         friend class Test;
         uint32_t power_num_shards_;
         uint32_t num_shards_;
         Proclet<RefCnter> ref_cnter_;
-        std::vector<WeakProclet<VectorShard>> shards_;
+        std::vector<WeakProclet<VectorShard> > shards_;
 
         uint32_t get_shard_idx(uint64_t idx);
-        template <typename T>
-        friend DistributedVector<T> make_vector(
+        template <typename TT>
+        friend DistributedVector<TT> make_dis_vector(
             uint32_t power_num_shards, bool pinned);
 };
 
 template <typename T>
 DistributedVector<T> make_dis_vector(
-    uint32_t power_num_shards = DistributedHashTable<T>::kDefaultPowerNumShards,
+    uint32_t power_num_shards = DistributedVector<T>::kDefaultPowerNumShards,
     bool pinned = false);
 
 }  // namespace nu

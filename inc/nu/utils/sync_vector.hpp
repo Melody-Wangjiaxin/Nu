@@ -28,11 +28,11 @@ class SyncVector {
         T *get(uint64_t &&idx);
         std::optional<T> get_copy(uint64_t &&idx);
         template <typename T1>
+        void put(uint64_t &&idx, T1 v);
+        template <typename T1>
         void push_back(T1 v);
         bool remove(uint64_t &&idx);
         void sort();
-        void quick_sort(int left, int right);
-        void bubble_sort();
                                 
         std::vector<T> get_all_data();
         
@@ -43,7 +43,12 @@ class SyncVector {
 
     private:
         void resize();
-        std::unique_ptr<T[]> data_;
+        void resize(uint64_t new_capacity);
+        void quick_sort(int left, int right);
+        void bubble_sort();
+
+        // std::unique_ptr<T[]> data_;
+        T* data_;
         uint64_t capacity_;
         uint64_t size_;
         Lock lock;

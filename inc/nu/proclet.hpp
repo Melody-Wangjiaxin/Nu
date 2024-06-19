@@ -77,6 +77,8 @@ class Proclet {
   template <typename K, typename V, typename Hash, typename KeyEqual,
             uint64_t NumBuckets>
   friend class DistributedHashTable;
+  template <typename T1>
+  friend class DistributedVector;
   friend class DistributedMemPool;
   friend int runtime_main_init(
       int argc, char **argv,

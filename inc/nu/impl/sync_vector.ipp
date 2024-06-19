@@ -8,32 +8,6 @@ inline SyncVector<T, Allocator, Lock>::SyncVector(
   SyncVector::operator=(o);
 }          
 
-template <typename Allocator, typename Lock>
-inline SyncVector<T, Allocator, Lock>
-    &SyncVector<T, Allocator, Lock>::operator=(
-        const SyncVector &o) noexcept {
-    VectorAllocator vecAllocator;
-    capacity_ = o.capacity_;
-    size_ = o.size_;
-    data_ = vecAllocator(capacity_);
-    for(size_t i = 0; i < size_; i++) {
-        auto *d = reinterpret_cast<T *>(data_ + i);
-        auto *o_d = reinterpret_cast<T *>(o.data_ + i);
-        *d = *o_d;
-    }
-    vecAllocator.deallocate(o.data_, o.capacity_);
-    o.capacity_ = 0;
-    o.size_ = 0;
-    return *this;
-}
-
-
-template <typename T, typename Allocator, typename Lock>
-inline SyncVector<T, Allocator, Lock>::SyncVector(
-                const SyncVector &o) noexcept : SyncVector() {
-  SyncVector::operator=(o);
-}          
-
 template <typename T, typename Allocator, typename Lock>
 inline SyncVector<T, Allocator, Lock>
     &SyncVector<T, Allocator, Lock>::operator=(
@@ -63,7 +37,7 @@ inline SyncVector<T, Allocator, Lock>::SyncVector(SyncVector &&o) noexcept
 }
 
 template <typename T, typename Allocator, typename Lock>
-inline SyncVector 
+inline SyncVector<T, Allocator, Lock> 
     &SyncVector<T, Allocator, Lock>::operator=(
         SyncVector && o) noexcept {
     data_ = o.data_;
@@ -105,6 +79,16 @@ void SyncVector<T, Allocator, Lock>::resize() {
 }
 
 template <typename T, typename Allocator, typename Lock>
+void SyncVector<T, Allocator, Lock>::resize(uint64_t new_capacity) {
+    VectorAllocator vecAllocator;
+    T* new_data = vecAllocator.allocate(new_capacity);
+    std::move(data_, data_ + size_, new_data);
+    vecAllocator.deallocate(data_, capacity_);
+    data_ = new_data;
+    capacity_ = new_capacity;
+}
+
+template <typename T, typename Allocator, typename Lock>
 T *SyncVector<T, Allocator, Lock>::get(uint64_t &&idx) {
     lock.lock();
     if(idx < size_) {
@@ -119,14 +103,27 @@ T *SyncVector<T, Allocator, Lock>::get(uint64_t &&idx) {
 template <typename T, typename Allocator, typename Lock>
 std::optional<T> SyncVector<T, Allocator, Lock>::get_copy(uint64_t &&idx) {
     lock.lock();
-    auto ret = nullptr;
     if(idx < size_) {
         auto ret = std::make_optional(data_[idx]);
         lock.unlock();
         return ret;
     }
     lock.unlock();
-    return nullptr;
+    return std::nullopt;
+}
+
+template <typename T, typename Allocator, typename Lock>
+template <typename T1>
+void SyncVector<T, Allocator, Lock>::put(uint64_t &&idx, T1 v) {
+    lock.lock();
+    if (idx >= capacity_) {
+        resize(idx + 1);
+    }
+    data_[idx] = std::forward<T1>(v);
+    if (idx >= size_) {
+        size_ = idx + 1;
+    }
+    lock.unlock();
 }
 
 template <typename T, typename Allocator, typename Lock>

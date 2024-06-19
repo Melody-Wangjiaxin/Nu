@@ -55,24 +55,20 @@ inline ProcletID
 }
         
 template <typename T>
-template <typename T1>
-inline std::optional<T1> DistributedVector<T>::get(uint64_t &&idx) {
+inline std::optional<T> DistributedVector<T>::get(uint64_t &&idx) {
 
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
-    return shard.__run(&VectorShard::template get_copy<T>,
-                        std::forward<T1>(idx), idx);
+    return shard.__run(&VectorShard::template get_copy, idx);
 }
 
 template <typename T>
-template <typename T1>
-inline std::optional<T1> DistributedVector<T>::get(
+inline std::optional<T> DistributedVector<T>::get(
                     uint64_t &&idx, bool *is_local) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
     *is_local = shard.is_local();
-    return shard.__run(&VectorShard::template get_copy<T>,
-                        std::forward<T1>(idx), idx);
+    return shard.__run(&VectorShard::template get_copy, idx);
 }
 
 template <typename T>
@@ -85,29 +81,40 @@ inline std::pair<std::optional<T>, uint32_t>
             return std::make_pair(shard.get_copy(std::move(idx)),
                                 get_cfg_ip());
         },
-        std::forward<T>(k));
+        idx);
+}
+
+template <typename T>
+template <typename T1>
+void DistributedVector<T>::put(uint64_t &&idx, T1 &&v) {
+    auto shard_idx = get_shard_idx(idx);
+    auto &shard = shards_[shard_idx];
+    shard.__run(&VectorShard::template put<T>, idx, std::forward<T1>(v));
 }
 
 template <typename T>
 template <typename T1>
 inline void DistributedVector<T>::push_back(T1 &&v) {
-    auto shard_idx = get_shard_idx(idx);
-    auto &shard = shards_[shard_idx];
-    shard.__run(&VectorShard::template push_back<T>, std::forward<T1>(v));
+    // auto shard_idx = get_shard_idx(idx);
+    // auto &shard = shards_[shard_idx];
+    // shard.__run(&VectorShard::template push_back<T>, std::forward<T1>(v));
 }
 
 template <typename T>
 inline bool DistributedVector<T>::remove(uint64_t &&idx) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
-    shard.__run(&VectorShard::template remove<T>, idx);
+    shard.__run(&VectorShard::template remove, idx);
 }
 
 template <typename T>
 inline void DistributedVector<T>::sort() {
-    auto shard_idx = get_shard_idx(idx);
-    auto &shard = shards_[shard_idx];
-    shard.__run(&VectorShard::template sort<T>);
+    // auto shard_idx = get_shard_idx(idx);
+    // auto &shard = shards_[shard_idx];
+    for (auto& shard : shards_) {
+        shard.__run(&VectorShard::template sort);
+    }
+    
 }
 
 template <typename T>
@@ -119,8 +126,15 @@ inline Future<std::optional<T1>> DistributedVector<T>::get_async(
 
 template <typename T>
 template <typename T1>
+inline Future<void> DistributedVector<T>::put_async(
+                                uint64_t &&idx, T1 &&v) {
+    return nu::async([&, idx, v] { return put(std::move(idx), std::move(v)); });
+}
+
+template <typename T>
+template <typename T1>
 inline Future<void> DistributedVector<T>::push_back_async(T1 &&v) {
-    return nu::async([&, v] { return push_back(std::move(v)); });
+    // return nu::async([&, v] { return push_back(std::move(v)); });
 }
 
 template <typename T>
@@ -130,7 +144,7 @@ inline Future<bool> DistributedVector<T>::remove_async(uint64_t &&idx) {
 
 template <typename T>
 inline Future<void> DistributedVector<T>::sort_async() {
-    return nu::async([&, idx] { return sort(); });
+    return nu::async([&] { return sort(); });
 }
 
 template <typename T>
@@ -158,7 +172,7 @@ inline void DistributedVector<T>::serialize(Archive &ar) {
 }
 
 template <typename T>
-inline DistributedVector<T> DistributedVector<T>::make_dis_vector(
+inline DistributedVector<T> make_dis_vector(
     uint32_t power_num_shards, bool pinned) {
     using VectorType = DistributedVector<T>;
     VectorType vec;

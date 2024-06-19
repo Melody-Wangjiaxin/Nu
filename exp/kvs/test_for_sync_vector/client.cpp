@@ -13,7 +13,7 @@
 
 #include <runtime.h>
 
-#include "nu/dis_hash_table.hpp"
+#include "nu/dis_vector.hpp"
 #include "nu/proclet.hpp"
 #include "nu/runtime.hpp"
 #include "nu/utils/farmhash.hpp"
@@ -34,7 +34,7 @@ constexpr static netaddr kClientAddrs[] = {
     {.ip = MAKE_IP_ADDR(18, 18, 1, 5), .port = 9000},
 };
 constexpr uint32_t kNumThreads = 500;
-constexpr double kTargetMops = 13;
+constexpr double kTargetMops = 5;
 constexpr uint32_t kWarmupUs = 1 * kOneSecond;
 constexpr uint32_t kDurationUs = 15 * kOneSecond;
 
@@ -69,7 +69,7 @@ struct Val {
 };
 
 struct Req {
-  Key key;
+  uint64_t idx;
   uint32_t shard_id;
 };
 
@@ -87,10 +87,10 @@ constexpr static auto kFarmHashKeytoU64 = [](const Key &key) {
   return util::Hash64(key.data, kKeyLen);
 };
 
-using DSHashTable = DistributedHashTable<Key, Val, decltype(kFarmHashKeytoU64)>;
+using DSVector = DistributedVector<Val>;
 
-constexpr static size_t kNumPairs = (1 << DSHashTable::kDefaultPowerNumShards) *
-                                    DSHashTable::kNumBucketsPerShard *
+constexpr static size_t kNum = (1 << DSVector::kDefaultPowerNumShards) *
+                                    DSVector::kNumPerShard *
                                     kLoadFactor;
 
 void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
@@ -99,7 +99,14 @@ void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
   }
 }
 
-void hashtable_get(uint32_t tid, const Req &req) {
+void random_int(uint64_t *idx) {
+    std::random_device rd;  // 获取随机数种子
+    std::mt19937 gen(rd()); // 以rd()初始化 Mersenne Twister 引擎
+    std::uniform_int_distribution<> distrib(0, 201325); // 定义分布范围 [0, 100]
+    *idx = distrib(gen);
+}
+
+void vector_get(uint32_t tid, const Req &req) {
   auto *proxy_id_ptr = shard_id_to_proxy_id_map_.get(req.shard_id);
   auto proxy_id = (!proxy_id_ptr) ? 0 : *proxy_id_ptr;
   BUG_ON(conns[proxy_id][tid]->WriteFull(&req, sizeof(req)) < 0);
@@ -126,9 +133,9 @@ public:
     auto *state = reinterpret_cast<MemcachedPerfThreadState *>(perf_state);
 
     auto perf_req = std::make_unique<PerfReq>();
-    random_str(state->dist_char, state->gen, kKeyLen, perf_req->req.key.data);
-    perf_req->req.shard_id = DSHashTable::get_shard_idx(
-        perf_req->req.key, DSHashTable::kDefaultPowerNumShards);
+    random_int(&perf_req->req.idx);
+    perf_req->req.shard_id = DSVector::get_shard_idx(
+        std::forward<uint64_t>(perf_req->req.idx), DSVector::kDefaultPowerNumShards);
 
     return perf_req;
   }
@@ -137,7 +144,7 @@ public:
                  const nu::PerfRequest *perf_req) {
     auto *state = reinterpret_cast<MemcachedPerfThreadState *>(perf_state);
     auto *req = reinterpret_cast<const PerfReq *>(perf_req);
-    hashtable_get(state->tid, req->req);
+    vector_get(state->tid, req->req);
 
     return true;
   }
