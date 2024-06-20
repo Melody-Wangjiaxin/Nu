@@ -147,7 +147,7 @@ void SyncVector<NZones, T, Allocator, Lock>::resize(uint64_t new_capacity) {
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 T *SyncVector<NZones, T, Allocator, Lock>::get(uint64_t &&idx) {
-    // lock_.lock();
+    lock_.lock();
     auto zone_idx = idx % NZones;
     auto &zone = zones_[zone_idx];
     auto &data_ = zone.data_;
@@ -156,17 +156,17 @@ T *SyncVector<NZones, T, Allocator, Lock>::get(uint64_t &&idx) {
     if(idx < size_) {
         auto ret = reinterpret_cast<T *>(data_ + (idx / NZones));
         lock.unlock();
-        // lock_.unlock();
+        lock_.unlock();
         return ret;
     }
     lock.unlock();
-    // lock_.unlock();
+    lock_.unlock();
     return nullptr;
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 std::optional<T> SyncVector<NZones, T, Allocator, Lock>::get_copy(uint64_t &&idx) {
-    // lock_.lock();
+    lock_.lock();
     auto zone_idx = idx % NZones;
     auto &zone = zones_[zone_idx];
     auto &data_ = zone.data_;
@@ -175,18 +175,18 @@ std::optional<T> SyncVector<NZones, T, Allocator, Lock>::get_copy(uint64_t &&idx
     if(idx < size_) {
         auto ret = std::make_optional(data_[(idx / NZones)]);
         lock.unlock();
-        // lock_.unlock();
+        lock_.unlock();
         return ret;
     }
     lock.unlock();
-    // lock_.unlock();
+    lock_.unlock();
     return std::nullopt;
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 template <typename T1>
 void SyncVector<NZones, T, Allocator, Lock>::put(uint64_t &&idx, T1 v) {
-    // lock_.lock();
+    lock_.lock();
     auto zone_idx = idx % NZones;
     auto &zone = zones_[zone_idx];
     auto &data_ = zone.data_;
@@ -211,7 +211,7 @@ void SyncVector<NZones, T, Allocator, Lock>::put(uint64_t &&idx, T1 v) {
         size_ = idx + 1;
     }
     lock.unlock();
-    // lock_.unlock();
+    lock_.unlock();
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
@@ -254,7 +254,7 @@ void SyncVector<NZones, T, Allocator, Lock>::sort() {
     // bubble_sort();
     // // quick_sort(0, size_ - 1);
     // lock.unlock();
-    // lock_.lock();
+    lock_.lock();
     VectorAllocator vecAllocator;
     T* all_data = vecAllocator.allocate(capacity_);
     uint64_t pre_size = 0;
@@ -284,7 +284,7 @@ void SyncVector<NZones, T, Allocator, Lock>::sort() {
         lock.unlock();
     }
     vecAllocator.deallocate(all_data, capacity_);
-    // lock_.unlock();
+    lock_.unlock();
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
@@ -323,6 +323,7 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_data() {
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_sorted_data() {
+    lock_.lock();
     VectorAllocator vecAllocator;
     T* all_data = vecAllocator.allocate(capacity_);
     uint64_t pre_size = 0;
@@ -347,8 +348,7 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_sorted_data() {
 
     std::vector<T> ret(all_data, all_data + pre_size);
     clear();
-
-    std::cout << std::endl;
+    lock_.unlock();
     // vecAllocator.deallocate(all_data, capacity_);
     return ret;
 }

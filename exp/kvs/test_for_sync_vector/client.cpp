@@ -34,7 +34,7 @@ constexpr static netaddr kClientAddrs[] = {
     {.ip = MAKE_IP_ADDR(18, 18, 1, 5), .port = 9000},
 };
 constexpr uint32_t kNumThreads = 500;
-constexpr double kTargetMops = 5;
+constexpr double kTargetMops = 1;
 constexpr uint32_t kWarmupUs = 1 * kOneSecond;
 constexpr uint32_t kDurationUs = 15 * kOneSecond;
 

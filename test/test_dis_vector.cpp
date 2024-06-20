@@ -51,7 +51,7 @@ bool run_test() {
         std_vec.push_back(v);
         vec.put(std::forward<uint64_t>(i), v);
     }
-    
+ 
     auto vec2 = vec;
     for (uint64_t i = 0; i < std_vec.size(); i++) {
         auto optional = vec2.get(std::forward<uint64_t>(i));

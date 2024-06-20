@@ -10,7 +10,7 @@ LPID=1
 SKIPPED_TESTS=("test_continuous_migrate")
 
 all_passed=1
-tests_prefix="test_dis_vector"
+tests_prefix="test_sync_vector"
 while (( "$#" )); do
 	case "$1" in
 		-h|--help) echo "$USAGE" >&2 ; exit 0 ;;

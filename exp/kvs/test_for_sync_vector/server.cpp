@@ -106,6 +106,7 @@ void init(DSVector *vec) {
     constexpr uint32_t kNumThreads = 400;
     auto num = kNum / kNumThreads;  // 80530636 / 400 = 201326
     for (uint32_t i = 0; i < kNumThreads; i++) {
+        std::cout << i << std::endl;
         threads.emplace_back([&, tid = i] {
             std::random_device rd;
             std::mt19937 mt(rd());
@@ -113,11 +114,13 @@ void init(DSVector *vec) {
             for (uint64_t j = i * num; j < (i + 1) * num; j++) {
                 Val val;
                 random_str(dist, mt, kValLen, val.data);
-                vec->put(std::move(j), val);
+                vec->put(std::forward<uint64_t>(j), val);
             }
         });
     }
+    uint32_t num2 = kNumThreads;
     for (auto &thread : threads) {
+        std::cout << num2-- << std::endl;
         thread.join();
     }
 }
@@ -131,7 +134,7 @@ class Proxy {
             auto *queue = rt::TcpQueue::Listen(laddr, 128);
             rt::TcpConn *c;
             while ((c = queue->Accept())) {
-            nu::Thread([&, c] { handle(c); }).detach();
+                nu::Thread([&, c] { handle(c); }).detach();
             }
         }
 
@@ -140,21 +143,21 @@ class Proxy {
                 Req req;
                 BUG_ON(c->ReadFull(&req, sizeof(req)) <= 0);
                 Resp resp;
-                // vec_.sort();
-                // resp.success = true;
-                bool is_local;
-                auto optional_v = vec_.get(std::forward<uint64_t>(req.idx), &is_local);
-                resp.found = optional_v.has_value();
-                if (resp.found) {
-                    resp.val = *optional_v;
-                }
-                auto id = vec_.get_shard_proclet_id(req.shard_id);
-                if (is_local) {
-                    resp.latest_shard_ip = 0;
-                } else {
-                    resp.latest_shard_ip =
-                        nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
-                }
+                vec_.sort();
+                resp.success = true;
+                // bool is_local;
+                // auto optional_v = vec_.get(std::forward<uint64_t>(req.idx), &is_local);
+                // resp.found = optional_v.has_value();
+                // if (resp.found) {
+                //     resp.val = *optional_v;
+                // }
+                // auto id = vec_.get_shard_proclet_id(req.shard_id);
+                // if (is_local) {
+                //     resp.latest_shard_ip = 0;
+                // } else {
+                //     resp.latest_shard_ip =
+                //         nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
+                // }
                 BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
             }
         }
