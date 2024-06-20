@@ -336,9 +336,19 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_sorted_data() {
         lock.unlock();
         pre_size += size_;
     }
-    bubble_sort(all_data);
+    
+    for (size_t i = 0; i < pre_size - 1; i++) {
+        for (size_t j = 0; j < pre_size - i - 1; j++) {
+            if (all_data[j] > all_data[j + 1]) {
+                std::swap(all_data[j], all_data[j + 1]);
+            }
+        }
+    }
+
     std::vector<T> ret(all_data, all_data + pre_size);
     clear();
+
+    std::cout << std::endl;
     // vecAllocator.deallocate(all_data, capacity_);
     return ret;
 }

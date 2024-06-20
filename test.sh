@@ -45,7 +45,7 @@ function run_test {
     disown -r
     sleep 3
 
-    run_main_server $BIN > "out.txt" | grep -q "Passed"
+    run_main_server $BIN 2>/dev/null | grep -q "Passed"
     ret=$?
 
     kill_process test_
