@@ -2,13 +2,13 @@
 
 namespace nu {
 
-template <typename T>
-inline DistributedVector<T>::DistributedVector(const DistributedVector &o) {
+template <typename T, uint64_t NumZones>
+inline DistributedVector<T, NumZones>::DistributedVector(const DistributedVector &o) {
   *this = o;
 }
 
-template <typename T>
-inline DistributedVector<T> &DistributedVector<T>::operator=(
+template <typename T, uint64_t NumZones>
+inline DistributedVector<T, NumZones> &DistributedVector<T, NumZones>::operator=(
         const DistributedVector &o) {
   power_num_shards_ = o.power_num_shards_;
   num_shards_ = o.num_shards_;
@@ -17,13 +17,13 @@ inline DistributedVector<T> &DistributedVector<T>::operator=(
   return *this;
 }
 
-template <typename T>
-inline DistributedVector<T>::DistributedVector(DistributedVector &&o) {
+template <typename T, uint64_t NumZones>
+inline DistributedVector<T, NumZones>::DistributedVector(DistributedVector &&o) {
     *this = std::move(o);
 }
 
-template <typename T>
-inline DistributedVector<T> &DistributedVector<T>::operator=(
+template <typename T, uint64_t NumZones>
+inline DistributedVector<T, NumZones> &DistributedVector<T, NumZones>::operator=(
         DistributedVector && o) {
     power_num_shards_ = o.power_num_shards_;
     num_shards_ = o.num_shards_;
@@ -32,38 +32,39 @@ inline DistributedVector<T> &DistributedVector<T>::operator=(
     return *this;
 }
 
-template <typename T>
-inline DistributedVector<T>::DistributedVector() 
+template <typename T, uint64_t NumZones>
+inline DistributedVector<T, NumZones>::DistributedVector() 
         : power_num_shards_(0), num_shards_(0) {}
 
-template <typename T>
-inline uint32_t DistributedVector<T>::get_shard_idx(uint64_t idx) {
-    return idx / (std::numeric_limits<uint64_t>::max() >> power_num_shards_);
+template <typename T, uint64_t NumZones>
+inline uint32_t DistributedVector<T, NumZones>::get_shard_idx(uint64_t idx) {
+    // return idx / (std::numeric_limits<uint64_t>::max() >> power_num_shards_);
+    return idx % (1 << power_num_shards_);
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 inline uint32_t 
-DistributedVector<T>::get_shard_idx(
+DistributedVector<T, NumZones>::get_shard_idx(
 uint64_t &&idx, uint32_t power_num_shards) {
-    return idx / (std::numeric_limits<uint64_t>::max() >> power_num_shards);
+    return idx % (1 << power_num_shards);
+    // return idx / (std::numeric_limits<uint64_t>::max() >> power_num_shards);
 }
         
-template <typename T>
+template <typename T, uint64_t NumZones>
 inline ProcletID 
-    DistributedVector<T>::get_shard_proclet_id(uint32_t shard_id) {
+    DistributedVector<T, NumZones>::get_shard_proclet_id(uint32_t shard_id) {
     return shards_[shard_id].id_;
 }
         
-template <typename T>
-inline std::optional<T> DistributedVector<T>::get(uint64_t &&idx) {
-
+template <typename T, uint64_t NumZones>
+inline std::optional<T> DistributedVector<T, NumZones>::get(uint64_t &&idx) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
     return shard.__run(&VectorShard::template get_copy, idx);
 }
 
-template <typename T>
-inline std::optional<T> DistributedVector<T>::get(
+template <typename T, uint64_t NumZones>
+inline std::optional<T> DistributedVector<T, NumZones>::get(
                     uint64_t &&idx, bool *is_local) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
@@ -71,9 +72,9 @@ inline std::optional<T> DistributedVector<T>::get(
     return shard.__run(&VectorShard::template get_copy, idx);
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 inline std::pair<std::optional<T>, uint32_t> 
-    DistributedVector<T>::get_with_ip(uint64_t &&idx) {
+    DistributedVector<T, NumZones>::get_with_ip(uint64_t &&idx) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
     return shard.__run(
@@ -84,71 +85,113 @@ inline std::pair<std::optional<T>, uint32_t>
         idx);
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 template <typename T1>
-void DistributedVector<T>::put(uint64_t &&idx, T1 &&v) {
+void DistributedVector<T, NumZones>::put(uint64_t &&idx, T1 &&v) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
     shard.__run(&VectorShard::template put<T>, idx, std::forward<T1>(v));
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 template <typename T1>
-inline void DistributedVector<T>::push_back(T1 &&v) {
+inline void DistributedVector<T, NumZones>::push_back(T1 &&v) {
     // auto shard_idx = get_shard_idx(idx);
     // auto &shard = shards_[shard_idx];
     // shard.__run(&VectorShard::template push_back<T>, std::forward<T1>(v));
 }
 
-template <typename T>
-inline bool DistributedVector<T>::remove(uint64_t &&idx) {
+template <typename T, uint64_t NumZones>
+inline bool DistributedVector<T, NumZones>::remove(uint64_t &&idx) {
     auto shard_idx = get_shard_idx(idx);
     auto &shard = shards_[shard_idx];
     shard.__run(&VectorShard::template remove, idx);
 }
 
-template <typename T>
-inline void DistributedVector<T>::sort() {
+template <typename T, uint64_t NumZones>
+inline void DistributedVector<T, NumZones>::sort() {
     // auto shard_idx = get_shard_idx(idx);
     // auto &shard = shards_[shard_idx];
-    for (auto& shard : shards_) {
-        shard.__run(&VectorShard::template sort);
+    // for (auto& shard : shards_) {
+    //     shard.__run(&VectorShard::template sort);
+    // }
+    // shards_[0].__run(&VectorShard::template sort);
+
+    std::vector<T> vec;
+    std::vector<Future<std::vector<T> > > futures;
+    for (uint32_t i = 0; i < num_shards_; i++) {
+        futures.emplace_back(shards_[i].__run_async(
+            +[](VectorShard &shard) { return shard.get_all_sorted_data(); }));
     }
-    
+    for (auto &future : futures) {
+        auto &vec_shard = future.get();
+        vec.insert(vec.end(), vec_shard.begin(), vec_shard.end());
+    }
+    // std::vector<T> vec_shards[num_shards_];
+    // for (uint32_t i = 0; i < num_shards_; i++) {
+    //     vec_shards[i] = shards_[i].__run(&VectorShard::template get_all_sorted_data);
+    //     vec.insert(vec.end(), vec_shards[i].begin(), vec_shards[i].end());
+    // }
+    uint64_t all_data_size = vec.size();
+
+    // std::cout << "Before sort..." << std::endl;
+    // for(size_t i = 0; i < all_data_size; i++) {
+    //     std::cout << vec[i] << std::endl;
+    // }
+
+    bubble_sort(vec);
+
+    // std::cout << "size = " << all_data_size << std::endl;
+    for(size_t i = 0; i < all_data_size; i++) {
+        // std::cout << vec[i] << std::endl;
+        put(std::forward<uint64_t>(i), vec[i]);
+    }
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
+void DistributedVector<T, NumZones>::bubble_sort(std::vector<T> &all_data) {
+    uint64_t size_ = all_data.size();
+    for (size_t i = 0; i < size_ - 1; i++) {
+        for (size_t j = 0; j < size_ - i - 1; j++) {
+            if (all_data[j] > all_data[j + 1]) {
+                std::swap(all_data[j], all_data[j + 1]);
+            }
+        }
+    }
+}
+
+template <typename T, uint64_t NumZones>
 template <typename T1>
-inline Future<std::optional<T1>> DistributedVector<T>::get_async(
+inline Future<std::optional<T1>> DistributedVector<T, NumZones>::get_async(
                                 uint64_t &&idx) {
     return nu::async([&, idx] { return get(std::move(idx)); });
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 template <typename T1>
-inline Future<void> DistributedVector<T>::put_async(
+inline Future<void> DistributedVector<T, NumZones>::put_async(
                                 uint64_t &&idx, T1 &&v) {
     return nu::async([&, idx, v] { return put(std::move(idx), std::move(v)); });
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 template <typename T1>
-inline Future<void> DistributedVector<T>::push_back_async(T1 &&v) {
+inline Future<void> DistributedVector<T, NumZones>::push_back_async(T1 &&v) {
     // return nu::async([&, v] { return push_back(std::move(v)); });
 }
 
-template <typename T>
-inline Future<bool> DistributedVector<T>::remove_async(uint64_t &&idx) {
+template <typename T, uint64_t NumZones>
+inline Future<bool> DistributedVector<T, NumZones>::remove_async(uint64_t &&idx) {
     return nu::async([&, idx] { return remove(std::move(idx)); });
 }
 
-template <typename T>
-inline Future<void> DistributedVector<T>::sort_async() {
+template <typename T, uint64_t NumZones>
+inline Future<void> DistributedVector<T, NumZones>::sort_async() {
     return nu::async([&] { return sort(); });
 }
 
-template <typename T>
-inline std::vector<T> DistributedVector<T>::get_all_data() {
+template <typename T, uint64_t NumZones>
+inline std::vector<T> DistributedVector<T, NumZones>::get_all_data() {
     std::vector<T> vec;
     std::vector<Future<std::vector<T> > > futures;
     for (uint32_t i = 0; i < num_shards_; i++) {
@@ -162,19 +205,19 @@ inline std::vector<T> DistributedVector<T>::get_all_data() {
     return vec;
 }
 
-template <typename T>
+template <typename T, uint64_t NumZones>
 template <class Archive>
-inline void DistributedVector<T>::serialize(Archive &ar) {
+inline void DistributedVector<T, NumZones>::serialize(Archive &ar) {
     ar(power_num_shards_);
     ar(num_shards_);
     ar(ref_cnter_);
     ar(shards_);
 }
 
-template <typename T>
-inline DistributedVector<T> make_dis_vector(
+template <typename T, uint64_t NumZones>
+inline DistributedVector<T, NumZones> make_dis_vector(
     uint32_t power_num_shards, bool pinned) {
-    using VectorType = DistributedVector<T>;
+    using VectorType = DistributedVector<T, NumZones>;
     VectorType vec;
     vec.power_num_shards_ = power_num_shards;
     vec.num_shards_ = (1 << power_num_shards);

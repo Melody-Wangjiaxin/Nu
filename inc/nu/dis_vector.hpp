@@ -15,13 +15,13 @@ extern "C" {
 
 namespace nu {
 
-template <typename T>
+template <typename T, uint64_t NumZones = 32768>
 class DistributedVector {
     public:
         constexpr static uint32_t kDefaultPowerNumShards = 13;
-        constexpr static uint64_t kNumPerShard = 32768;
+        constexpr static uint64_t kNumPerShard = NumZones;
 
-        using VectorShard = SyncVector<T, std::allocator<T>, Mutex>;
+        using VectorShard = SyncVector<NumZones, T, std::allocator<T>, Mutex>;
 
         DistributedVector(const DistributedVector &);
         DistributedVector &operator=(const DistributedVector &);
@@ -69,14 +69,15 @@ class DistributedVector {
         std::vector<WeakProclet<VectorShard> > shards_;
 
         uint32_t get_shard_idx(uint64_t idx);
-        template <typename TT>
-        friend DistributedVector<TT> make_dis_vector(
+        template <typename TT, uint64_t N>
+        friend DistributedVector<TT, N> make_dis_vector(
             uint32_t power_num_shards, bool pinned);
+        void bubble_sort(std::vector<T> &all_data);
 };
 
-template <typename T>
-DistributedVector<T> make_dis_vector(
-    uint32_t power_num_shards = DistributedVector<T>::kDefaultPowerNumShards,
+template <typename T, uint64_t NumZones = 32768>
+DistributedVector<T, NumZones> make_dis_vector(
+    uint32_t power_num_shards = DistributedVector<T, NumZones>::kDefaultPowerNumShards,
     bool pinned = false);
 
 }  // namespace nu

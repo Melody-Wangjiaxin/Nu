@@ -13,7 +13,7 @@
 
 namespace nu{
 
-template <typename T,
+template <size_t NZones, typename T,
           typename Allocator = std::allocator<T>,
           typename Lock = SpinLock>
 class SyncVector {
@@ -33,8 +33,10 @@ class SyncVector {
         void push_back(T1 v);
         bool remove(uint64_t &&idx);
         void sort();
+        void clear();
                                 
         std::vector<T> get_all_data();
+        std::vector<T> get_all_sorted_data();
         
         template <class Archive>
         void save(Archive &ar) const;
@@ -44,18 +46,27 @@ class SyncVector {
     private:
         void resize();
         void resize(uint64_t new_capacity);
-        void quick_sort(int left, int right);
-        void bubble_sort();
+        void quick_sort(int left, int right, T* data_);
+        void bubble_sort(T* all_data);
 
         // std::unique_ptr<T[]> data_;
-        T* data_;
+        struct Zone {
+            T* data_;
+            uint64_t capacity_per_zone_;
+            uint64_t size_per_zone_;
+            Lock lock;
+        };
+        Zone *zones_;
         uint64_t capacity_;
         uint64_t size_;
-        Lock lock;
+        Lock lock_;
+        std::vector<T> all_sorted_data;
 
         using VectorAllocator =
             std::allocator_traits<Allocator>::template rebind_alloc<T>;
-            
+        using ZoneAllocator =
+            std::allocator_traits<Allocator>::template rebind_alloc<Zone>;
+
 };
 
 }

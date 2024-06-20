@@ -10,7 +10,7 @@ LPID=1
 SKIPPED_TESTS=("test_continuous_migrate")
 
 all_passed=1
-tests_prefix=
+tests_prefix="test_dis_vector"
 while (( "$#" )); do
 	case "$1" in
 		-h|--help) echo "$USAGE" >&2 ; exit 0 ;;
@@ -45,7 +45,7 @@ function run_test {
     disown -r
     sleep 3
 
-    run_main_server $BIN 2>/dev/null | grep -q "Passed"
+    run_main_server $BIN > "out.txt" | grep -q "Passed"
     ret=$?
 
     kill_process test_

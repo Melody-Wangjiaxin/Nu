@@ -39,8 +39,12 @@ test_time_src = test/test_time.cpp
 test_time_obj = $(test_time_src:.cpp=.o)
 test_sync_hash_map_src = test/test_sync_hash_map.cpp
 test_sync_hash_map_obj = $(test_sync_hash_map_src:.cpp=.o)
+test_sync_vector_src = test/test_sync_vector.cpp
+test_sync_vector_obj = $(test_sync_vector_src:.cpp=.o)
 test_dis_hash_table_src = test/test_dis_hash_table.cpp
 test_dis_hash_table_obj = $(test_dis_hash_table_src:.cpp=.o)
+test_dis_vector_src = test/test_dis_vector.cpp
+test_dis_vector_obj = $(test_dis_vector_src:.cpp=.o)
 test_dis_mem_pool_src = test/test_dis_mem_pool.cpp
 test_dis_mem_pool_obj = $(test_dis_mem_pool_src:.cpp=.o)
 test_nested_proclet_src = test/test_nested_proclet.cpp
@@ -107,7 +111,7 @@ ctrl_main_obj = $(ctrl_main_src:.cpp=.o)
 all: libnu.a bin/test_slab bin/test_proclet bin/test_pass_proclet bin/test_migrate \
 bin/test_lock bin/test_condvar bin/test_time bin/bench_rpc_tput \
 bin/bench_proclet_call_tput bin/bench_proclet_call_lat bin/bench_thread \
-bin/bench_migrate bin/test_sync_hash_map bin/test_dis_hash_table \
+bin/bench_migrate bin/test_sync_hash_map bin/test_sync_vector bin/test_dis_hash_table bin/test_dis_vector \
 bin/bench_hashtable_timeseries bin/bench_fake_migration bin/test_nested_proclet \
 bin/test_dis_mem_pool bin/test_rem_raw_ptr bin/test_rem_unique_ptr \
 bin/test_rem_shared_ptr bin/bench_fragmentation bin/test_perf bin/bench_real_mem_pressure \
@@ -139,8 +143,12 @@ bin/test_time: $(test_time_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
 	$(LDXX) -o $@ $(test_time_obj) $(lib_obj) $(librt_libs) $(RUNTIME_LIBS) $(LDFLAGS)
 bin/test_sync_hash_map: $(test_sync_hash_map_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
 	$(LDXX) -o $@ $(test_sync_hash_map_obj) $(lib_obj) $(librt_libs) $(RUNTIME_LIBS) $(LDFLAGS)
+bin/test_sync_vector: $(test_sync_vector_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
+	$(LDXX) -o $@ $(test_sync_vector_obj) $(lib_obj) $(librt_libs) $(RUNTIME_LIBS) $(LDFLAGS)
 bin/test_dis_hash_table: $(test_dis_hash_table_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
 	$(LDXX) -o $@ $(test_dis_hash_table_obj) $(lib_obj) $(librt_libs) $(RUNTIME_LIBS) $(LDFLAGS)
+bin/test_dis_vector: $(test_dis_vector_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
+	$(LDXX) -o $@ $(test_dis_vector_obj) $(lib_obj) $(librt_libs) $(RUNTIME_LIBS) $(LDFLAGS)
 bin/test_dis_mem_pool: $(test_dis_mem_pool_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
 	$(LDXX) -o $@ $(test_dis_mem_pool_obj) $(lib_obj) $(librt_libs) $(RUNTIME_LIBS) $(LDFLAGS)
 bin/test_nested_proclet: $(test_nested_proclet_obj) $(librt_libs) $(RUNTIME_DEPS) $(lib_obj)
