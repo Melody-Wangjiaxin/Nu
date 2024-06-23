@@ -9,6 +9,7 @@
 #include <random>
 #include <utility>
 #include <vector>
+#include <mutex>
 
 #include <runtime.h>
 
@@ -17,6 +18,8 @@
 #include "nu/runtime.hpp"
 #include "nu/utils/farmhash.hpp"
 #include "nu/utils/thread.hpp"
+#include "nu/utils/mutex.hpp"
+#include "nu/utils/spin_lock.hpp"
 
 constexpr uint32_t kKeyLen = 20;
 constexpr uint32_t kValLen = 2;
@@ -80,15 +83,18 @@ struct Req {
     uint64_t idx;
     uint32_t shard_id;
     bool shard_sort_finished;
+    bool to_sort;
     bool to_clear_shard;
     bool end_of_req;
+    bool waiting;
 };
 
 struct Resp {
-    int latest_shard_ip;
+    uint32_t latest_shard_ip;
     bool found;
     Val val;
     bool shard_sort_finished;
+    bool all_data_sorted;
     bool clear_shard_finished;
     bool ending;
 };
@@ -154,6 +160,11 @@ class Proxy {
                     resp.ending = true;
                     BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
                     break;
+                } else if(req.waiting) {
+                    Resp resp;
+                    resp.shard_sort_finished = true;
+                    BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
+                    continue;
                 }
                 Resp resp;
                 resp.clear_shard_finished = false;
@@ -161,17 +172,29 @@ class Proxy {
                 bool is_local;
                 if(req.shard_sort_finished) {
                     resp.shard_sort_finished = true;
-                    if(req.to_clear_shard) {
-                        std::cout << "start clear" << std::endl;
-                        vec_.clear_all();
-                        std::cout << "clear over" << std::endl;
-                        resp.clear_shard_finished = true;
-                        resp.latest_shard_ip = 0;
-                        resp.ending = true;
-                    }                    
+                    if(req.to_sort) {
+                        mutex_.lock();
+                        std::cout << "start sort" << std::endl;
+                        std::sort(vec_to_sort.begin(), vec_to_sort.end());
+                        std::cout << "sort over" << std::endl;
+                        mutex_.unlock();
+                        resp.all_data_sorted = true;
+                    } else {
+                        if(req.to_clear_shard) {
+                            std::cout << "start clear" << std::endl;
+                            vec_.clear_all();
+                            std::cout << "clear over" << std::endl;
+                            resp.clear_shard_finished = true;
+                            resp.latest_shard_ip = 0;
+                            resp.ending = true;
+                        }
+                    }          
                 } else {
                     resp.shard_sort_finished = false;
-                    vec_to_sort[req.shard_id] = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
+                    auto temp_vec = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
+                    mutex_.lock();
+                    vec_to_sort.insert(vec_to_sort.end(), temp_vec.begin(), temp_vec.end());
+                    mutex_.unlock();
                     auto id = vec_.get_shard_proclet_id(req.shard_id);
                     if (is_local) {
                         resp.latest_shard_ip = 0;
@@ -203,7 +226,8 @@ class Proxy {
 
     private:
         DSVector vec_;
-        std::vector<Val> vec_to_sort[1 << DSVector::kDefaultPowerNumShards];
+        std::mutex mutex_;
+        std::vector<Val> vec_to_sort;
 };
 
 void do_work() {
