@@ -89,27 +89,16 @@ SyncVector<NZones, T, Allocator, Lock>::~SyncVector() {
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 void SyncVector<NZones, T, Allocator, Lock>::clear() {
-    lock_.lock();
     VectorAllocator vecAllocator;
     for (size_t i = 0; i < NZones; i++) {
         // auto &data_ = zones_[i].data_;
         // vecAllocator.deallocate(data_, zones_[i].size_per_zone_);
         auto &zone = zones_[i];
-        auto &lock = zone.lock;
-        lock.lock();
         zone.capacity_per_zone_ = 1;
         zone.size_per_zone_ = 0;
-        lock.unlock();
     }
     capacity_ = NZones;
     size_ = 0;
-    lock_.unlock();
-    // for (size_t i = 0; i < NZones; i++) {
-    //     zones_[i].capacity_per_zone_ = 1;
-    //     zones_[i].size_per_zone_ = 0;
-    //     auto &data_ = zones_[i].data_;
-    //     data_ = vecAllocator.allocate(1);
-    // }
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
@@ -324,7 +313,7 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_data() {
     }
 
     std::vector<T> ret(all_data, all_data + pre_size);
-    clear();
+    // clear();
     lock_.unlock();
     vecAllocator.deallocate(all_data, capacity_);
     return ret;

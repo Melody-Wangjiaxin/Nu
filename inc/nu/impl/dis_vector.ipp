@@ -166,6 +166,21 @@ void DistributedVector<T, NumZones>::clear_shard(
     shard.__run(&VectorShard::template clear);
 }
 
+template <typename T, uint64_t NumZones>
+void DistributedVector<T, NumZones>::clear_all()
+{
+    // std::vector<Future<void> > futures;
+    // for (uint32_t i = 0; i < num_shards_; i++) {
+    //     futures.emplace_back(shards_[i].__run_async(
+    //         +[](VectorShard &shard) { return shard.clear(); }));
+    // }
+    // for (auto &future : futures) {
+    //     future.get();
+    // }  
+    for (uint32_t i = 0; i < num_shards_; i++) {
+        shards_[i].__run(&VectorShard::template clear);
+    } 
+}
 
 template <typename T, uint64_t NumZones>
 void DistributedVector<T, NumZones>::bubble_sort(std::vector<T> &all_data) {

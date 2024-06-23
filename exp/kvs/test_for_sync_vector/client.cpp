@@ -10,6 +10,7 @@
 #include <random>
 #include <utility>
 #include <vector>
+#include <mutex>
 
 #include <runtime.h>
 
@@ -27,11 +28,12 @@ constexpr uint32_t kValLen = 2;
 constexpr double kLoadFactor = 0.30;
 constexpr uint32_t kPrintIntervalUS = 1000 * 1000;
 constexpr uint32_t kNumProxies = 1;
-constexpr uint32_t kProxyIps[] = {MAKE_IP_ADDR(18, 18, 1, 3)};
+// constexpr uint32_t kProxyIps[] = {MAKE_IP_ADDR(18, 18, 1, 3)};
+constexpr uint32_t kProxyIps[] = {MAKE_IP_ADDR(18, 18, 1, 2)};
 constexpr uint32_t kProxyPort = 10086;
 constexpr static netaddr kClientAddrs[] = {
     {.ip = MAKE_IP_ADDR(18, 18, 1, 4), .port = 9000},
-    {.ip = MAKE_IP_ADDR(18, 18, 1, 5), .port = 9000},
+    // {.ip = MAKE_IP_ADDR(18, 18, 1, 5), .port = 9000},
 };
 constexpr uint32_t kNumThreads = 500;
 constexpr double kTargetMops = 1;
@@ -72,8 +74,8 @@ struct Req {
     uint64_t idx;
     uint32_t shard_id;
     bool shard_sort_finished;
-    uint32_t to_clear_shard;
-    bool clear_shard_finished;
+    bool to_clear_shard;
+    bool end_of_req;
 };
 
 struct PerfReq: nu::PerfRequest {
@@ -85,7 +87,8 @@ struct Resp {
     bool found;
     Val val;
     bool shard_sort_finished;
-    bool all_sort_finished;
+    bool clear_shard_finished;
+    bool ending;
 };
 
 constexpr static auto kFarmHashKeytoU64 = [](const Key &key) {
@@ -97,6 +100,7 @@ using DSVector = DistributedVector<Val>;
 constexpr static size_t kNum = (1 << DSVector::kDefaultPowerNumShards) *
                                     DSVector::kNumPerShard *
                                     kLoadFactor;
+static std::atomic<bool> req_end = false;
 
 void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
     for (uint32_t i = 0; i < len; i++) {
@@ -115,8 +119,11 @@ void vector_sort(uint32_t tid, const Req &req) {
     auto *proxy_id_ptr = shard_id_to_proxy_id_map_.get(req.shard_id);
     auto proxy_id = (!proxy_id_ptr) ? 0 : *proxy_id_ptr;
     BUG_ON(conns[proxy_id][tid]->WriteFull(&req, sizeof(req)) < 0);
+    if(req.to_clear_shard) delay_us(50000);
     Resp resp;
     BUG_ON(conns[proxy_id][tid]->ReadFull(&resp, sizeof(resp)) <= 0);
+    if(resp.clear_shard_finished) std::cout << "clear shard finished" << std::endl;
+    if(resp.ending) req_end = true;
     if (!resp.shard_sort_finished && resp.latest_shard_ip) {
         auto proxy_ip_ptr = std::find(std::begin(kProxyIps), std::end(kProxyIps),
                                     resp.latest_shard_ip);
@@ -124,6 +131,16 @@ void vector_sort(uint32_t tid, const Req &req) {
         uint32_t proxy_id = proxy_ip_ptr - std::begin(kProxyIps);
         shard_id_to_proxy_id_map_.put(req.shard_id, proxy_id);
     }
+}
+
+void destroy_tcp() {
+  for (uint32_t i = 0; i < kNumProxies; i++) {
+    static_assert(kNumThreads > 0);
+    Req req { .end_of_req = true };
+    BUG_ON(conns[i][0]->WriteFull(&req, sizeof(req)) < 0);
+    Resp resp;
+    BUG_ON(conns[i][0]->ReadFull(&resp, sizeof(resp)) <= 0);
+  }
 }
 
 class MemcachedPerfAdapter : public nu::PerfAdapter {
@@ -136,26 +153,32 @@ public:
 
     std::unique_ptr<nu::PerfRequest> gen_req(nu::PerfThreadState *perf_state) {
         static std::atomic<uint64_t> shard_idx_ = 0;
-        static std::atomic<uint64_t> to_clear_shard_idx_ = 0;
+        static std::atomic<bool> sorted = false;
+        static std::atomic<bool> shard_cleared = false;
+        
         auto *state = reinterpret_cast<MemcachedPerfThreadState *>(perf_state);
         auto perf_req = std::make_unique<PerfReq>();
         random_int(&perf_req->req.idx);
-        // perf_req->req.shard_id = DSVector::get_shard_idx(
-        //     std::forward<uint64_t>(perf_req->req.idx), DSVector::kDefaultPowerNumShards);
-        if(shard_idx_ >= (1 << DSVector::kDefaultPowerNumShards)) {
-            perf_req->req.shard_id = -1;
-            perf_req->req.shard_sort_finished = true;
-            // if(to_clear_shard_idx_ < (1 << DSVector::kDefaultPowerNumShards)) {
-            //     perf_req->req.clear_shard_finished = false;
-            //     perf_req->req.to_clear_shard = to_clear_shard_idx_++;
-            // } else {
-            //     perf_req->req.to_clear_shard = -1;
-            //     perf_req->req.clear_shard_finished = true;
-            // }
+        perf_req->req.end_of_req = false;
+        if(req_end) {
+            perf_req->req.end_of_req = true;            
         } else {
-            perf_req->req.shard_id = shard_idx_++;
-            perf_req->req.shard_sort_finished = false;
+            if(shard_idx_ >= (1 << DSVector::kDefaultPowerNumShards)) {
+                perf_req->req.shard_id = -1;
+                perf_req->req.shard_sort_finished = true;
+                if(!shard_cleared) {
+                    perf_req->req.to_clear_shard = true;
+                    shard_cleared = true;            
+                } else {
+                    perf_req->req.to_clear_shard = false;
+                }
+            } else {
+                perf_req->req.to_clear_shard = false;
+                perf_req->req.shard_id = shard_idx_++;
+                perf_req->req.shard_sort_finished = false;
+            }
         }
+        
         return perf_req;
     }
 
@@ -173,7 +196,7 @@ void init_tcp() {
         netaddr raddr = {.ip = kProxyIps[i], .port = kProxyPort};
         for (uint32_t j = 0; j < kNumThreads; j++) {
             conns[i][j] =
-                rt::TcpConn::DialAffinity(j % rt::RuntimeMaxCores(), raddr);
+                    rt::TcpConn::DialAffinity(j % rt::RuntimeMaxCores(), raddr);
             delay_us(50000);
             BUG_ON(!conns[i][j]);
         }
@@ -188,6 +211,7 @@ void do_work() {
     perf.run_multi_clients(std::span(kClientAddrs), kNumThreads,
                             kTargetMops / std::size(kClientAddrs), kDurationUs,
                             kWarmupUs, 50 * nu::kOneMilliSecond);
+    
     std::cout << "real_mops, avg_lat, 50th_lat, 90th_lat, 95th_lat, 99th_lat, "
                 "99.9th_lat"
                 << std::endl;

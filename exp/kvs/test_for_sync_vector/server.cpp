@@ -80,8 +80,8 @@ struct Req {
     uint64_t idx;
     uint32_t shard_id;
     bool shard_sort_finished;
-    uint32_t to_clear_shard;
-    bool clear_shard_finished;
+    bool to_clear_shard;
+    bool end_of_req;
 };
 
 struct Resp {
@@ -89,7 +89,8 @@ struct Resp {
     bool found;
     Val val;
     bool shard_sort_finished;
-    bool all_sort_finished;
+    bool clear_shard_finished;
+    bool ending;
 };
 
 constexpr static auto kFarmHashKeytoU64 = [](const Key &key) {
@@ -147,23 +148,27 @@ class Proxy {
             while (true) {
                 Req req;
                 BUG_ON(c->ReadFull(&req, sizeof(req)) <= 0);
+                if (req.end_of_req) [[unlikely]] {
+                    Resp resp;
+                    resp.shard_sort_finished = true;
+                    resp.ending = true;
+                    BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
+                    break;
+                }
                 Resp resp;
+                resp.clear_shard_finished = false;
+                resp.ending = false;
                 bool is_local;
                 if(req.shard_sort_finished) {
-                    // if(!req.clear_shard_finished) {
-                    //     resp.shard_sort_finished = false;
-                    //     vec_.clear_shard(std::forward<uint32_t>(req.to_clear_shard), &is_local);
-                    //     auto id = vec_.get_shard_proclet_id(req.to_clear_shard);
-                    //     if (is_local) {
-                    //         resp.latest_shard_ip = 0;
-                    //     } else {
-                    //         resp.latest_shard_ip =
-                    //             nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
-                    //     }
-                    // } else {
-                    //     resp.shard_sort_finished = true;
-                    // }
                     resp.shard_sort_finished = true;
+                    if(req.to_clear_shard) {
+                        std::cout << "start clear" << std::endl;
+                        vec_.clear_all();
+                        std::cout << "clear over" << std::endl;
+                        resp.clear_shard_finished = true;
+                        resp.latest_shard_ip = 0;
+                        resp.ending = true;
+                    }                    
                 } else {
                     resp.shard_sort_finished = false;
                     vec_to_sort[req.shard_id] = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
@@ -174,7 +179,7 @@ class Proxy {
                         resp.latest_shard_ip =
                             nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
                     }
-                }
+                }                
                 // bool is_local;
                 // vec_.sort_shard(std::forward<uint64_t>(req.shard_id), &is_local);
                 // resp.found = true;
