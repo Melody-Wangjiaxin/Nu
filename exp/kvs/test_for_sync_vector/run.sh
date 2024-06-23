@@ -11,7 +11,7 @@ KS=26
 
 DIR=`pwd`
 
-mops=( 1 2 3 4 5 )
+mops=( 1 )
 
 get_clt_idx() {
     echo `expr $1 + $CLT_START_IDX - 1`

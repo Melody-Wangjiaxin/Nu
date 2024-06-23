@@ -43,7 +43,6 @@ std::string random_str(uint32_t len) {
 }
 
 bool run_test() {
-
     std::vector<std::string> std_vec;
     auto vec = make_dis_vector<std::string>(5);
     for (uint64_t i = 0; i < kNum; i++) {

@@ -110,13 +110,6 @@ inline bool DistributedVector<T, NumZones>::remove(uint64_t &&idx) {
 
 template <typename T, uint64_t NumZones>
 inline void DistributedVector<T, NumZones>::sort() {
-    // auto shard_idx = get_shard_idx(idx);
-    // auto &shard = shards_[shard_idx];
-    // for (auto& shard : shards_) {
-    //     shard.__run(&VectorShard::template sort);
-    // }
-    // shards_[0].__run(&VectorShard::template sort);
-
     std::vector<T> vec;
     std::vector<Future<std::vector<T> > > futures;
     for (uint32_t i = 0; i < num_shards_; i++) {
@@ -127,26 +120,52 @@ inline void DistributedVector<T, NumZones>::sort() {
         auto &vec_shard = future.get();
         vec.insert(vec.end(), vec_shard.begin(), vec_shard.end());
     }
-    // std::vector<T> vec_shards[num_shards_];
-    // for (uint32_t i = 0; i < num_shards_; i++) {
-    //     vec_shards[i] = shards_[i].__run(&VectorShard::template get_all_sorted_data);
-    //     vec.insert(vec.end(), vec_shards[i].begin(), vec_shards[i].end());
-    // }
-    uint64_t all_data_size = vec.size();
 
-    // std::cout << "Before sort..." << std::endl;
-    // for(size_t i = 0; i < all_data_size; i++) {
-    //     std::cout << vec[i] << std::endl;
-    // }
+    uint64_t all_data_size = vec.size();
 
     bubble_sort(vec);
 
-    // std::cout << "size = " << all_data_size << std::endl;
     for(size_t i = 0; i < all_data_size; i++) {
-        // std::cout << vec[i] << std::endl;
-        put(std::forward<uint64_t>(i), vec[i]);
+        put(std::forward<uint64_t>(i), std::move(vec[i]));
     }
+    
 }
+
+template <typename T, uint64_t NumZones>
+void DistributedVector<T, NumZones>::sort_shard(uint32_t &&idx)
+{
+    shards_[idx].__run(&VectorShard::template sort);
+}
+
+template <typename T, uint64_t NumZones>
+void DistributedVector<T, NumZones>::sort_shard(
+    uint32_t &&idx, bool* is_local)
+{
+    auto &shard = shards_[idx];
+    *is_local = shard.is_local();
+    shards_[idx].__run(&VectorShard::template sort);
+}
+
+template <typename T, uint64_t NumZones>
+std::vector<T>
+DistributedVector<T, NumZones>::get_data_in_shard(
+    uint32_t &&idx, bool *is_local)
+{
+    auto &shard = shards_[idx];
+    *is_local = shard.is_local();
+    std::vector<T> ret = shard.__run(&VectorShard::template get_all_sorted_data);
+    return ret;
+}
+
+template <typename T, uint64_t NumZones>
+void DistributedVector<T, NumZones>::clear_shard(
+    uint32_t &&idx, bool *is_local)
+{
+    auto &shard = shards_[idx];
+    *is_local = shard.is_local();
+    shard.__run(&VectorShard::template clear);
+}
+
 
 template <typename T, uint64_t NumZones>
 void DistributedVector<T, NumZones>::bubble_sort(std::vector<T> &all_data) {

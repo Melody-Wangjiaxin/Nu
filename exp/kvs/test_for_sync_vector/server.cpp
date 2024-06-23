@@ -44,44 +44,52 @@ struct Val {
     }
 
     bool operator>(const Val &v) const {
-        for(size_t i = 0; i < kValLen; i++) {
-            if(data[i] != v.data[i]) return data[i] > v.data[i];
-        }
-        return false;
+        // for(size_t i = 0; i < kValLen; i++) {
+        //     if(data[i] != v.data[i]) return data[i] > v.data[i];
+        // }
+        // return false;
+        return std::memcmp(this->data, v.data, kValLen) > 0;
     }
 
     bool operator<(const Val &v) const {
-        for(size_t i = 0; i < kValLen; i++) {
-            if(data[i] != v.data[i]) return data[i] < v.data[i];
-        }
-        return false;
+        // for(size_t i = 0; i < kValLen; i++) {
+        //     if(data[i] != v.data[i]) return data[i] < v.data[i];
+        // }
+        // return false;
+        return std::memcmp(this->data, v.data, kValLen) < 0;
     }
 
     bool operator>=(const Val &v) const {
-        for(size_t i = 0; i < kValLen; i++) {
-            if(data[i] != v.data[i]) return data[i] >= v.data[i];
-        }
-        return true;
+        // for(size_t i = 0; i < kValLen; i++) {
+        //     if(data[i] != v.data[i]) return data[i] >= v.data[i];
+        // }
+        // return true;
+        return std::memcmp(this->data, v.data, kValLen) >= 0;
     }
 
     bool operator<=(const Val &v) const {
-        for(size_t i = 0; i < kValLen; i++) {
-            if(data[i] != v.data[i]) return data[i] <= v.data[i];
-        }
-        return true;
+        // for(size_t i = 0; i < kValLen; i++) {
+        //     if(data[i] != v.data[i]) return data[i] <= v.data[i];
+        // }
+        // return true;
+        return std::memcmp(this->data, v.data, kValLen) <= 0;
     }
 };
 
 struct Req {
     uint64_t idx;
     uint32_t shard_id;
+    bool shard_sort_finished;
+    uint32_t to_clear_shard;
+    bool clear_shard_finished;
 };
 
 struct Resp {
     int latest_shard_ip;
     bool found;
     Val val;
-    bool success;
+    bool shard_sort_finished;
+    bool all_sort_finished;
 };
 
 constexpr static auto kFarmHashKeytoU64 = [](const Key &key) {
@@ -93,7 +101,7 @@ using DSVector = nu::DistributedVector<Val>;
 // constexpr static size_t kNum = (1 << DSVector::kDefaultPowerNumShards) *
 //                                     DSVector::kNumPerShard *
 //                                     kLoadFactor; // 80530636
-constexpr static size_t kNum = 40000;
+constexpr static size_t kNum = 500000;
 
 void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
     for (uint32_t i = 0; i < len; i++) {
@@ -106,7 +114,6 @@ void init(DSVector *vec) {
     constexpr uint32_t kNumThreads = 400;
     auto num = kNum / kNumThreads;  // 80530636 / 400 = 201326
     for (uint32_t i = 0; i < kNumThreads; i++) {
-        std::cout << i << std::endl;
         threads.emplace_back([&, tid = i] {
             std::random_device rd;
             std::mt19937 mt(rd());
@@ -118,9 +125,7 @@ void init(DSVector *vec) {
             }
         });
     }
-    uint32_t num2 = kNumThreads;
     for (auto &thread : threads) {
-        std::cout << num2-- << std::endl;
         thread.join();
     }
 }
@@ -143,14 +148,36 @@ class Proxy {
                 Req req;
                 BUG_ON(c->ReadFull(&req, sizeof(req)) <= 0);
                 Resp resp;
-                vec_.sort();
-                resp.success = true;
+                bool is_local;
+                if(req.shard_sort_finished) {
+                    // if(!req.clear_shard_finished) {
+                    //     resp.shard_sort_finished = false;
+                    //     vec_.clear_shard(std::forward<uint32_t>(req.to_clear_shard), &is_local);
+                    //     auto id = vec_.get_shard_proclet_id(req.to_clear_shard);
+                    //     if (is_local) {
+                    //         resp.latest_shard_ip = 0;
+                    //     } else {
+                    //         resp.latest_shard_ip =
+                    //             nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
+                    //     }
+                    // } else {
+                    //     resp.shard_sort_finished = true;
+                    // }
+                    resp.shard_sort_finished = true;
+                } else {
+                    resp.shard_sort_finished = false;
+                    vec_to_sort[req.shard_id] = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
+                    auto id = vec_.get_shard_proclet_id(req.shard_id);
+                    if (is_local) {
+                        resp.latest_shard_ip = 0;
+                    } else {
+                        resp.latest_shard_ip =
+                            nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
+                    }
+                }
                 // bool is_local;
-                // auto optional_v = vec_.get(std::forward<uint64_t>(req.idx), &is_local);
-                // resp.found = optional_v.has_value();
-                // if (resp.found) {
-                //     resp.val = *optional_v;
-                // }
+                // vec_.sort_shard(std::forward<uint64_t>(req.shard_id), &is_local);
+                // resp.found = true;
                 // auto id = vec_.get_shard_proclet_id(req.shard_id);
                 // if (is_local) {
                 //     resp.latest_shard_ip = 0;
@@ -158,12 +185,20 @@ class Proxy {
                 //     resp.latest_shard_ip =
                 //         nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
                 // }
+
+                // bool is_local;
+                // auto optional_v = vec_.get(std::forward<uint64_t>(req.idx), &is_local);
+                // resp.found = optional_v.has_value();
+                // if (resp.found) {
+                //     resp.val = *optional_v;
+                // }
                 BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
             }
         }
 
     private:
         DSVector vec_;
+        std::vector<Val> vec_to_sort[1 << DSVector::kDefaultPowerNumShards];
 };
 
 void do_work() {

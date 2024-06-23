@@ -37,6 +37,9 @@ class DistributedVector {
         void push_back(T1 &&v);
         bool remove(uint64_t &&idx);
         void sort();
+        void sort_shard(uint32_t &&idx);
+        void sort_shard(uint32_t &&idx, bool *is_local);
+        void clear_shard(uint32_t &&idx, bool *is_local);
 
         template <typename T1>
         Future<std::optional<T1>> get_async(uint64_t &&idx);
@@ -48,9 +51,11 @@ class DistributedVector {
         Future<void> sort_async();
         
         std::vector<T> get_all_data();
+        std::vector<T> get_data_in_shard(uint32_t &&idx, bool *is_local);
         static uint32_t get_shard_idx(uint64_t &&idx, uint32_t power_num_shards);
         ProcletID get_shard_proclet_id(uint32_t shard_id);
-
+      
+      
         template <class Archive>
         void serialize(Archive &ar);
 

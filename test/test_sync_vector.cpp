@@ -56,16 +56,13 @@ void do_work() {
             passed = false;
             goto done;
         }
-        // std::cout << v << ' ' << *optional << std::endl;
     }
 
-    // std::cout << "After sort..." << std::endl;
     std::sort(std_vec.begin(), std_vec.end());
     vec_ptr->sort();
     for (uint64_t i = 0; i < std_vec.size(); i++) {
         auto optional = vec_ptr->get(std::forward<uint64_t>(i));
         auto &v = std_vec[i];
-        // std::cout << v << ' ' << *optional << std::endl;
         if (!optional || v != *optional) {
             passed = false;
             goto done;

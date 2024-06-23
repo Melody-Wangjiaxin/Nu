@@ -71,6 +71,9 @@ struct Val {
 struct Req {
     uint64_t idx;
     uint32_t shard_id;
+    bool shard_sort_finished;
+    uint32_t to_clear_shard;
+    bool clear_shard_finished;
 };
 
 struct PerfReq: nu::PerfRequest {
@@ -81,7 +84,8 @@ struct Resp {
     uint32_t latest_shard_ip;
     bool found;
     Val val;
-    bool success;
+    bool shard_sort_finished;
+    bool all_sort_finished;
 };
 
 constexpr static auto kFarmHashKeytoU64 = [](const Key &key) {
@@ -107,13 +111,13 @@ void random_int(uint64_t *idx) {
     *idx = distrib(gen);
 }
 
-void vector_get(uint32_t tid, const Req &req) {
+void vector_sort(uint32_t tid, const Req &req) {
     auto *proxy_id_ptr = shard_id_to_proxy_id_map_.get(req.shard_id);
     auto proxy_id = (!proxy_id_ptr) ? 0 : *proxy_id_ptr;
     BUG_ON(conns[proxy_id][tid]->WriteFull(&req, sizeof(req)) < 0);
     Resp resp;
     BUG_ON(conns[proxy_id][tid]->ReadFull(&resp, sizeof(resp)) <= 0);
-    if (resp.latest_shard_ip) {
+    if (!resp.shard_sort_finished && resp.latest_shard_ip) {
         auto proxy_ip_ptr = std::find(std::begin(kProxyIps), std::end(kProxyIps),
                                     resp.latest_shard_ip);
         BUG_ON(proxy_ip_ptr == std::end(kProxyIps));
@@ -131,13 +135,27 @@ public:
     }
 
     std::unique_ptr<nu::PerfRequest> gen_req(nu::PerfThreadState *perf_state) {
+        static std::atomic<uint64_t> shard_idx_ = 0;
+        static std::atomic<uint64_t> to_clear_shard_idx_ = 0;
         auto *state = reinterpret_cast<MemcachedPerfThreadState *>(perf_state);
-
         auto perf_req = std::make_unique<PerfReq>();
         random_int(&perf_req->req.idx);
-        perf_req->req.shard_id = DSVector::get_shard_idx(
-            std::forward<uint64_t>(perf_req->req.idx), DSVector::kDefaultPowerNumShards);
-
+        // perf_req->req.shard_id = DSVector::get_shard_idx(
+        //     std::forward<uint64_t>(perf_req->req.idx), DSVector::kDefaultPowerNumShards);
+        if(shard_idx_ >= (1 << DSVector::kDefaultPowerNumShards)) {
+            perf_req->req.shard_id = -1;
+            perf_req->req.shard_sort_finished = true;
+            // if(to_clear_shard_idx_ < (1 << DSVector::kDefaultPowerNumShards)) {
+            //     perf_req->req.clear_shard_finished = false;
+            //     perf_req->req.to_clear_shard = to_clear_shard_idx_++;
+            // } else {
+            //     perf_req->req.to_clear_shard = -1;
+            //     perf_req->req.clear_shard_finished = true;
+            // }
+        } else {
+            perf_req->req.shard_id = shard_idx_++;
+            perf_req->req.shard_sort_finished = false;
+        }
         return perf_req;
     }
 
@@ -145,7 +163,7 @@ public:
                     const nu::PerfRequest *perf_req) {
         auto *state = reinterpret_cast<MemcachedPerfThreadState *>(perf_state);
         auto *req = reinterpret_cast<const PerfReq *>(perf_req);
-        vector_get(state->tid, req->req);
+        vector_sort(state->tid, req->req);
         return true;
     }
 };
@@ -156,7 +174,7 @@ void init_tcp() {
         for (uint32_t j = 0; j < kNumThreads; j++) {
             conns[i][j] =
                 rt::TcpConn::DialAffinity(j % rt::RuntimeMaxCores(), raddr);
-            delay_us(1000);
+            delay_us(50000);
             BUG_ON(!conns[i][j]);
         }
     }

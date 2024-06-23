@@ -113,6 +113,7 @@ class Proxy {
       Req req;
       BUG_ON(c->ReadFull(&req, sizeof(req)) <= 0);
       Resp resp;
+      hash_table_.get_all_pairs();
       bool is_local;
       auto optional_v = hash_table_.get(req.key, &is_local);
       resp.found = optional_v.has_value();

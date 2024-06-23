@@ -1,7 +1,37 @@
-CPU 20| <5> cpu: detected 48 cores, 1 nodes
-CPU 20| <5> time: detected 2794 ticks / us
-[  0.000914] CPU 20| <5> loading configuration from '.conf_53548'
-[  0.001070] CPU 20| <3> < 1 guaranteed kthreads is not recommended for networked apps
+CPU 43| <5> cpu: detected 48 cores, 1 nodes
+CPU 43| <5> time: detected 2794 ticks / us
+[  0.000476] CPU 43| <5> loading configuration from '.conf_130374'
+[  0.000665] CPU 43| <3> < 1 guaranteed kthreads is not recommended for networked apps
 running with lpid = 1
 start initing...
 finish initing...
+[ 17.907646] CPU 25| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907766] CPU 09| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907886] CPU 23| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907897] CPU 15| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907889] CPU 18| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907882] CPU 21| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907942] CPU 22| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907942] CPU 07| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907944] CPU 08| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907941] CPU 13| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+[ 17.907944] CPU 27| <0> FATAL: src/stack_manager.cpp:27 ASSERTION 'false' FAILED IN 'operator()'
+./server[0x456674]
+./server[0x466226]
+./server[0x425a7d]
+./server[0x42858d]
+./server[0x4212a8]
+./server[0x456674]
+./server[0x466226]
+./server[0x425a7d]
+./server[0x42858d]
+./server[0x442ccb]
+./server[0x4212a8]
+./server[0x442ccb]
+./server[0x456674]
+./server[0x466226]
+./server[0x425a7d]
+./server[0x456674]
+./server[0x42858d]
+./server[0x456674]
+./server[0x456674]
