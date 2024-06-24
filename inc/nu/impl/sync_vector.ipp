@@ -91,8 +91,8 @@ template <size_t NZones, typename T, typename Allocator, typename Lock>
 void SyncVector<NZones, T, Allocator, Lock>::clear() {
     VectorAllocator vecAllocator;
     for (size_t i = 0; i < NZones; i++) {
-        // auto &data_ = zones_[i].data_;
-        // vecAllocator.deallocate(data_, zones_[i].size_per_zone_);
+        auto &data_ = zones_[i].data_;
+        vecAllocator.deallocate(data_, zones_[i].capacity_per_zone_);
         auto &zone = zones_[i];
         zone.capacity_per_zone_ = 1;
         zone.size_per_zone_ = 0;
@@ -351,6 +351,23 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_sorted_data() {
     return ret;
 }
 
+template <size_t NZones, typename T, typename Allocator, typename Lock>
+void SyncVector<NZones, T, Allocator, Lock>::reload(std::vector<T>& all_data)
+{
+    lock_.lock();
+    uint32_t pre_size = 0;
+    for(size_t i = 0; i < NZones; i++) {
+        auto &zone = zones_[i];
+        auto &data_ = zone.data_;
+        auto &lock = zone.lock;
+        lock.lock();
+        uint64_t size_ = zones_[i].size_per_zone_;
+        std::copy(all_data.begin() + pre_size, all_data.begin() + pre_size + size_, data_);
+        pre_size += size_;
+        lock.unlock();
+    }
+    lock_.unlock();
+}
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 template <class Archive>

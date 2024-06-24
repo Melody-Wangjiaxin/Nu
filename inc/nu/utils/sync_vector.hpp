@@ -34,6 +34,7 @@ class SyncVector {
         bool remove(uint64_t &&idx);
         void sort();
         void clear();
+        void reload(std::vector<T>& all_data);
                                 
         std::vector<T> get_all_data();
         std::vector<T> get_all_sorted_data();

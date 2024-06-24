@@ -48,7 +48,7 @@ void Perf::gen_reqs(
           }
         });
   }
-
+  
   for (auto &thread : threads) {
     thread.Join();
   }

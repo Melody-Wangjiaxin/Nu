@@ -41,6 +41,7 @@ class DistributedVector {
         void sort_shard(uint32_t &&idx, bool *is_local);
         void clear_shard(uint32_t &&idx, bool *is_local);
         void clear_all();
+        void reload(std::vector<T> data_[]);
 
         template <typename T1>
         Future<std::optional<T1>> get_async(uint64_t &&idx);

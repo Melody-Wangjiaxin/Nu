@@ -76,7 +76,6 @@ struct Req {
     uint32_t shard_id;
     bool shard_sort_finished;
     bool to_sort;
-    bool to_clear_shard;
     bool end_of_req;
     bool waiting;
 };
@@ -91,7 +90,6 @@ struct Resp {
     Val val;
     bool shard_sort_finished;
     bool all_data_sorted;
-    bool clear_shard_finished;
     bool ending;
 };
 
@@ -119,39 +117,46 @@ void random_int(uint64_t *idx) {
     *idx = distrib(gen);
 }
 
-static std::atomic<bool> cleared = false;
+// static std::atomic<bool> reloaded = false;
+// static std::atomic<bool> reloading = false;
 static std::atomic<bool> sorted = false;
 static std::atomic<bool> sorting = false;
-static std::atomic<bool> clearing = false;
+// static std::atomic<bool> shardsorted = false;
+// static std::atomic<bool> shardsorting = false;
 void vector_sort(uint32_t tid, const Req &req) {
     auto *proxy_id_ptr = shard_id_to_proxy_id_map_.get(req.shard_id);
     auto proxy_id = (!proxy_id_ptr) ? 0 : *proxy_id_ptr;
     BUG_ON(conns[proxy_id][tid]->WriteFull(&req, sizeof(req)) < 0);
-    if(req.to_clear_shard || req.to_sort) delay_us(50000);
+    if(req.to_sort) delay_us(50000);
     Resp resp;
     BUG_ON(conns[proxy_id][tid]->ReadFull(&resp, sizeof(resp)) <= 0);
     
-    if(resp.all_data_sorted) sorting = false, sorted = true;
-    if(resp.clear_shard_finished) clearing = false, cleared = true;
-    if(resp.ending) req_end = true;
-
-    if (!resp.shard_sort_finished && resp.latest_shard_ip) {
+    // mutex_.lock();
+    // if(resp.shard_sort_finished && !shardsorted) {
+    //     shardsorted = true;
+    //     std::cout << "shard sorting finished" << std::endl;
+    // }
+    if(resp.all_data_sorted && !sorted) {
+        sorting = false, sorted = true;
+        std::cout << "all data sort finished" << std::endl;
+    }
+    // if(resp.reload_shard_finished && !reloaded) {
+    //     reloading = false, reloaded = true;
+    //     std::cout << "reload shard finished" << std::endl;
+    // }
+    if(resp.ending && !req_end) {
+        req_end = true;
+        // std::cout << "req end" << std::endl;
+    }
+    // mutex_.unlock();
+    
+    if (resp.latest_shard_ip) {
         auto proxy_ip_ptr = std::find(std::begin(kProxyIps), std::end(kProxyIps),
                                     resp.latest_shard_ip);
         BUG_ON(proxy_ip_ptr == std::end(kProxyIps));
         uint32_t proxy_id = proxy_ip_ptr - std::begin(kProxyIps);
         shard_id_to_proxy_id_map_.put(req.shard_id, proxy_id);
     }
-}
-
-void destroy_tcp() {
-  for (uint32_t i = 0; i < kNumProxies; i++) {
-    static_assert(kNumThreads > 0);
-    Req req { .end_of_req = true };
-    BUG_ON(conns[i][0]->WriteFull(&req, sizeof(req)) < 0);
-    Resp resp;
-    BUG_ON(conns[i][0]->ReadFull(&resp, sizeof(resp)) <= 0);
-  }
 }
 
 class MemcachedPerfAdapter : public nu::PerfAdapter {
@@ -164,44 +169,50 @@ public:
 
     std::unique_ptr<nu::PerfRequest> gen_req(nu::PerfThreadState *perf_state) {
         static std::atomic<uint64_t> shard_idx_ = 0;
-        static std::atomic<uint64_t> sort_idx = 0;
+        static std::atomic<uint64_t> reload_idx = 0;
         
         auto *state = reinterpret_cast<MemcachedPerfThreadState *>(perf_state);
         auto perf_req = std::make_unique<PerfReq>();
         random_int(&perf_req->req.idx);
         perf_req->req.end_of_req = false;
         perf_req->req.waiting = false;
+        perf_req->req.shard_id = -1;
+        
+        
+        mutex_.lock();
         if(req_end) {
-            perf_req->req.end_of_req = true;            
-        } else if(sorting || clearing) {
-            perf_req->req.waiting = true;           
-        } else {
+            std::cout << "end_of_req" << std::endl;
+            perf_req->req.end_of_req = true;
+            mutex_.unlock();
+        } 
+        else if(sorting && !sorted) {
+            perf_req->req.waiting = true;
+            // perf_req->req.to_sort = true;
+            mutex_.unlock();
+        } 
+        else {
             if(shard_idx_ >= (1 << DSVector::kDefaultPowerNumShards)) {
-                perf_req->req.shard_id = -1;
                 perf_req->req.shard_sort_finished = true;
-                mutex_.lock();
-                if(!sorted && !sorting) {
-                    std::cout << "send to sort" << std::endl;
-                    perf_req->req.to_sort = true;
-                    sorting = true;
-                    mutex_.unlock();
-                } else {
-                    perf_req->req.to_sort = false;
-                    if(!cleared && !clearing) {
-                        std::cout << "send to clear" << std::endl;
-                        perf_req->req.to_clear_shard = true;
-                        clearing = true;                      
-                    } else {
-                        perf_req->req.to_clear_shard = false;
-                    }
-                    mutex_.unlock();
-                }                
+                std::cout << "send to sort" << std::endl;
+                sorting = true;
+                perf_req->req.to_sort = true;
+                mutex_.unlock();
             } else {
-                perf_req->req.to_clear_shard = false;
                 perf_req->req.shard_id = shard_idx_++;
+                // if(shard_idx_ == (1 << DSVector::kDefaultPowerNumShards)) {
+                //     shardsorting = true;
+                //     std::cout << "all shard sorting request sent" << std::endl;
+                // }
                 perf_req->req.shard_sort_finished = false;
+                mutex_.unlock();
             }
         }
+        // else {
+        //     // std::cout << "send waiting" << std::endl;
+        //     perf_req->req.waiting = true;
+        //     mutex_.unlock();
+        // }
+        
         
         return perf_req;
     }

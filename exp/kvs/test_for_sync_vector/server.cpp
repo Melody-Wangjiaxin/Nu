@@ -9,6 +9,7 @@
 #include <random>
 #include <utility>
 #include <vector>
+#include <queue>
 #include <mutex>
 
 #include <runtime.h>
@@ -40,7 +41,37 @@ struct Key {
 };
 
 struct Val {
+    
     char data[kValLen];
+
+    Val() : data() {}
+
+    Val(const char* src) : data() {
+        std::memcpy(data, src, kValLen);
+    }
+
+    // 拷贝构造函数
+    Val(const Val& other) {
+        std::memcpy(data, other.data, kValLen);
+    }
+
+    // 拷贝赋值运算符
+    Val& operator=(const Val& other) {
+        if (this != &other) {
+            std::memcpy(data, other.data, kValLen);
+        }
+        return *this;
+    }
+
+    // // 移动赋值运算符
+    // Val& operator=(Val&& other) noexcept {
+    //     if (this != &other) {
+    //         delete[] data;
+    //         data = other.data;
+    //         other.data = nullptr;
+    //     }
+    //     return *this;
+    // }
 
     template <class Archive> void serialize(Archive &ar) {
         ar(cereal::binary_data(data, sizeof(data)));
@@ -84,7 +115,6 @@ struct Req {
     uint32_t shard_id;
     bool shard_sort_finished;
     bool to_sort;
-    bool to_clear_shard;
     bool end_of_req;
     bool waiting;
 };
@@ -95,7 +125,6 @@ struct Resp {
     Val val;
     bool shard_sort_finished;
     bool all_data_sorted;
-    bool clear_shard_finished;
     bool ending;
 };
 
@@ -137,6 +166,100 @@ void init(DSVector *vec) {
     }
 }
 
+struct Element {
+    Val value;
+    uint32_t arrayIndex;
+    uint32_t elementIndex;
+    bool operator>(const Element& other) const {
+        return value > other.value;
+    }
+};
+
+std::vector<Val> mergeSortedArrays(uint32_t arrays_num, std::vector<Val> arrays[]) {
+    std::vector<Val> result;
+    std::priority_queue<Element, std::vector<Element>, std::greater<Element> > minHeap;
+    std::vector<Val> tmp[1 << DSVector::kDefaultPowerNumShards];
+
+    // 将每个数组的第一个元素加入堆中
+    for (size_t i = 0; i < arrays_num; ++i) {
+        // tmp[i].reserve(arrays[i].size());
+        // std::copy(arrays[i].begin(), arrays[i].end(), tmp[i].begin());
+        // arrays[i].clear();
+        // std::cout << "arrays[" << i << "].size()=" << arrays[i].size() << std::endl;
+        if (!arrays[i].empty()) {
+            minHeap.push(Element{arrays[i][0], i, 0});
+        }
+    }
+
+    // 进行多路归并
+    while (!minHeap.empty()) {
+        Element current = minHeap.top();
+        minHeap.pop();
+        result.push_back(current.value);
+        // 如果当前数组还有剩余元素，则将下一个元素加入堆中
+        if (current.elementIndex + 1 < arrays[current.arrayIndex].size()) {
+            minHeap.push(Element{arrays[current.arrayIndex][current.elementIndex + 1], 
+                        current.arrayIndex, current.elementIndex + 1});
+        }
+    }
+
+    for (size_t i = 0; i < arrays_num; ++i) {
+        arrays[i].clear();
+    }
+    std::cout << "result size = " << result.size() << std::endl;
+    for(Val i: result) {
+        printf("%s ", i.data);
+    }
+    std::cout << std::endl;
+    return result;
+}
+
+std::vector<Val> merge_sort(uint32_t arrays_num, std::vector<Val> arrays[]) {
+    std::vector<Val> result;
+    std::vector<uint32_t> indices(arrays_num, 0); // 保存每个数组当前指针的位置
+
+    while (true) {
+        Val min_value;
+        memcpy(min_value.data, "{{", sizeof min_value.data);        
+        int min_index = -1;
+        // 找到所有数组中当前最小的元素
+        for (uint32_t i = 0; i < arrays_num; i++) {
+            if (indices[i] < arrays_num && arrays[i][indices[i]] < min_value) {
+                min_value = arrays[i][indices[i]];
+                min_index = i;
+            }
+        }
+        // 如果没有找到最小值，说明所有数组都已合并完毕
+        if (min_index == -1) {
+            break;
+        }
+        // 将最小值加入结果，并移动对应数组的指针
+        result.push_back(min_value);
+        indices[min_index]++;
+    }
+
+    return result;
+}
+
+void mySort(std::vector<Val> vec_to_sort, uint32_t arrays_num, std::vector<Val> arrays[])
+{
+    std::sort(vec_to_sort.begin(), vec_to_sort.end());
+    std::vector<uint32_t> sizes(arrays_num, 0); // 保存每个数组当前指针的位置
+    for (uint32_t i = 0; i < arrays_num; i++) {
+        sizes[i] = arrays[i].size();
+        arrays[i].clear();
+    }
+    uint32_t pre_size = 0;
+    for (uint32_t i = 0; i < arrays_num; i++) {
+        uint32_t tmp_size = sizes[i];
+        arrays[i].reserve(tmp_size);
+        std::copy(vec_to_sort.begin() + pre_size, 
+                vec_to_sort.begin() + pre_size + tmp_size, 
+                arrays[i].begin());
+    }
+}
+
+static std::atomic<bool> flag = false;
 class Proxy {
     public:
         Proxy(DSVector vec) : vec_(std::move(vec)) {}
@@ -154,47 +277,84 @@ class Proxy {
             while (true) {
                 Req req;
                 BUG_ON(c->ReadFull(&req, sizeof(req)) <= 0);
-                if (req.end_of_req) [[unlikely]] {
-                    Resp resp;
-                    resp.shard_sort_finished = true;
+                Resp resp;
+                resp.latest_shard_ip = 0;
+                if (req.end_of_req) {
                     resp.ending = true;
                     BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
+                    std::cout << "ending  break" << std::endl;
                     break;
                 } else if(req.waiting) {
-                    Resp resp;
-                    resp.shard_sort_finished = true;
+                    if(!flag && got_shard_num >= (1 << DSVector::kDefaultPowerNumShards)) {
+                        if(mutex_1.try_lock() && !flag) {
+                            std::cout << "start sort 2" << std::endl;
+                            mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
+                            // std::sort(vec_to_sort.begin(), vec_to_sort.end());
+                            // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
+                            // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);
+                            std::cout << "sort over 2" << std::endl;
+                            std::cout << "start reload 2" << std::endl;
+                            // vec_.reload(res);
+                            std::cout << "reload over 2" << std::endl;
+                            resp.ending = true;
+                            flag = true;
+                            resp.all_data_sorted = true;
+                            mutex_1.unlock();
+                        }                        
+                    }
                     BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
                     continue;
-                }
-                Resp resp;
-                resp.clear_shard_finished = false;
+                }                
+                // resp.reload_shard_finished = false;
+                resp.all_data_sorted = false;
                 resp.ending = false;
                 bool is_local;
                 if(req.shard_sort_finished) {
                     resp.shard_sort_finished = true;
                     if(req.to_sort) {
-                        mutex_.lock();
-                        std::cout << "start sort" << std::endl;
-                        std::sort(vec_to_sort.begin(), vec_to_sort.end());
-                        std::cout << "sort over" << std::endl;
-                        mutex_.unlock();
-                        resp.all_data_sorted = true;
-                    } else {
-                        if(req.to_clear_shard) {
-                            std::cout << "start clear" << std::endl;
-                            vec_.clear_all();
-                            std::cout << "clear over" << std::endl;
-                            resp.clear_shard_finished = true;
-                            resp.latest_shard_ip = 0;
-                            resp.ending = true;
-                        }
-                    }          
+                        if(!flag && got_shard_num >= (1 << DSVector::kDefaultPowerNumShards)) {
+                            if(mutex_1.try_lock() && !flag) {
+                                std::cout << "start sort 1" << std::endl;
+                                mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
+                                // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
+                                // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);
+                                std::cout << "sort over 1" << std::endl;
+                                std::cout << "start reload 1" << std::endl;
+                                // vec_.reload(res);
+                                std::cout << "reload over 1" << std::endl;
+                                resp.ending = true;
+                                flag = true;
+                                mutex_1.unlock();
+                            }
+                            resp.all_data_sorted = true;
+                        } else {
+                            resp.all_data_sorted = false;
+                        } 
+                    } 
+                    // else {
+                    //     if(req.to_reload_shard) {
+                    //         std::cout << "start reload" << std::endl;
+                    //         vec_.clear_all();
+                    //         std::cout << "reload over" << std::endl;
+                    //         resp.reload_shard_finished = true;
+                    //         resp.latest_shard_ip = 0;
+                    //         resp.ending = true;
+                    //     }
+                    // }          
                 } else {
                     resp.shard_sort_finished = false;
-                    auto temp_vec = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
-                    mutex_.lock();
-                    vec_to_sort.insert(vec_to_sort.end(), temp_vec.begin(), temp_vec.end());
-                    mutex_.unlock();
+                    vecs_[req.shard_id] = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
+                    mutex_2.lock();
+                    vec_to_sort.insert(vec_to_sort.end(), 
+                                        vecs_[req.shard_id].begin(), 
+                                        vecs_[req.shard_id].end());
+                    got_shard_num++;
+                    // std::cout << "got shard num " << got_shard_num << std::endl;
+                    if(got_shard_num == (1 << DSVector::kDefaultPowerNumShards)) {
+                        resp.shard_sort_finished = true;
+                        std::cout << "all shard sorting finished" << std::endl;
+                    }
+                    mutex_2.unlock();
                     auto id = vec_.get_shard_proclet_id(req.shard_id);
                     if (is_local) {
                         resp.latest_shard_ip = 0;
@@ -226,8 +386,11 @@ class Proxy {
 
     private:
         DSVector vec_;
-        std::mutex mutex_;
+        std::mutex mutex_1; // for data_sort
+        std::mutex mutex_2; // for get_shard
+        std::atomic<uint32_t> got_shard_num;
         std::vector<Val> vec_to_sort;
+        std::vector<Val> vecs_[1 << DSVector::kDefaultPowerNumShards];
 };
 
 void do_work() {
