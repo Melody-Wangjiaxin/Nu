@@ -243,6 +243,7 @@ std::vector<Val> merge_sort(uint32_t arrays_num, std::vector<Val> arrays[]) {
 
 void mySort(std::vector<Val> vec_to_sort, uint32_t arrays_num, std::vector<Val> arrays[])
 {
+    std::cout << "start sort" << std::endl;
     std::sort(vec_to_sort.begin(), vec_to_sort.end());
     std::vector<uint32_t> sizes(arrays_num, 0); // 保存每个数组当前指针的位置
     for (uint32_t i = 0; i < arrays_num; i++) {
@@ -257,6 +258,7 @@ void mySort(std::vector<Val> vec_to_sort, uint32_t arrays_num, std::vector<Val> 
                 vec_to_sort.begin() + pre_size + tmp_size, 
                 arrays[i].begin());
     }
+    std::cout << "sort over" << std::endl;
 }
 
 static std::atomic<bool> flag = false;
@@ -287,24 +289,28 @@ class Proxy {
                 } else if(req.waiting) {
                     if(!flag && got_shard_num >= (1 << DSVector::kDefaultPowerNumShards)) {
                         if(mutex_1.try_lock() && !flag) {
-                            std::cout << "start sort 2" << std::endl;
                             mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
+
+                            std::cout << "start reload" << std::endl;
+                            vec_.reload(vecs_);
+                            std::cout << "reload over" << std::endl;
                             // std::sort(vec_to_sort.begin(), vec_to_sort.end());
                             // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
                             // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);
-                            std::cout << "sort over 2" << std::endl;
-                            std::cout << "start reload 2" << std::endl;
+                            
+                            // std::cout << "start reload 2" << std::endl;
                             // vec_.reload(res);
-                            std::cout << "reload over 2" << std::endl;
-                            resp.ending = true;
+                            // std::cout << "reload over 2" << std::endl;
+                            
                             flag = true;
+                            resp.ending = true;
                             resp.all_data_sorted = true;
                             mutex_1.unlock();
                         }                        
                     }
                     BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
                     continue;
-                }                
+                }        
                 // resp.reload_shard_finished = false;
                 resp.all_data_sorted = false;
                 resp.ending = false;
@@ -314,14 +320,18 @@ class Proxy {
                     if(req.to_sort) {
                         if(!flag && got_shard_num >= (1 << DSVector::kDefaultPowerNumShards)) {
                             if(mutex_1.try_lock() && !flag) {
-                                std::cout << "start sort 1" << std::endl;
+                                // std::cout << "start sort 1" << std::endl;
                                 mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
+                                
+                                std::cout << "start reload" << std::endl;
+                                vec_.reload(vecs_);
+                                std::cout << "reload over" << std::endl;
                                 // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
                                 // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);
-                                std::cout << "sort over 1" << std::endl;
-                                std::cout << "start reload 1" << std::endl;
+                                // std::cout << "sort over 1" << std::endl;
+                                // std::cout << "start reload 1" << std::endl;
                                 // vec_.reload(res);
-                                std::cout << "reload over 1" << std::endl;
+                                // std::cout << "reload over 1" << std::endl;
                                 resp.ending = true;
                                 flag = true;
                                 mutex_1.unlock();

@@ -352,7 +352,7 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_sorted_data() {
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
-void SyncVector<NZones, T, Allocator, Lock>::reload(std::vector<T>& all_data)
+void SyncVector<NZones, T, Allocator, Lock>::reload(std::vector<T>&& all_data)
 {
     lock_.lock();
     uint32_t pre_size = 0;
