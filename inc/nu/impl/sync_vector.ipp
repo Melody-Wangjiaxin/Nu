@@ -104,16 +104,18 @@ void SyncVector<NZones, T, Allocator, Lock>::clear() {
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 void SyncVector<NZones, T, Allocator, Lock>::resize() {
     uint64_t new_capacity = capacity_ * 2;
+    // std::cout << "capacity " << capacity_ << " -> " << new_capacity << std::endl;
+
     VectorAllocator vecAllocator;
     uint64_t capacity_per_zone = (capacity_ + NZones - 1) / NZones;
     uint64_t new_capacity_per_zone = (new_capacity + NZones - 1) / NZones;
     for (size_t i = 0; i < NZones; i++) {
-        zones_[i].capacity_per_zone_ = new_capacity_per_zone;
-        uint64_t size_per_zone = zones_[i].size_per_zone_;
         auto &data_ = zones_[i].data_;
+        uint64_t size_per_zone = zones_[i].size_per_zone_;
         T* new_data = vecAllocator.allocate(new_capacity_per_zone);
         std::move(data_, data_ + size_per_zone, new_data);
-        vecAllocator.deallocate(data_, capacity_per_zone);
+        vecAllocator.deallocate(data_, zones_[i].capacity_per_zone_);
+        zones_[i].capacity_per_zone_ = new_capacity_per_zone;     
         data_ = new_data;        
     }
     capacity_ = new_capacity;    
@@ -184,17 +186,17 @@ void SyncVector<NZones, T, Allocator, Lock>::put(uint64_t &&idx, T1 v) {
     auto &lock = zone.lock;
     lock.lock();
     if (idx >= capacity_) {
-        for(size_t i = 0; i < NZones; i++) {
-            if(i == zone_idx) continue;
-            auto &tlock = zones_[i].lock;
-            tlock.lock();
-        }
+        // for(size_t i = 0; i < NZones; i++) {
+        //     if(i == zone_idx) continue;
+        //     auto &tlock = zones_[i].lock;
+        //     tlock.lock();
+        // }
         resize();
-        for(size_t i = 0; i < NZones; i++) {
-            if(i == zone_idx) continue;
-            auto &tlock = zones_[i].lock;
-            tlock.unlock();
-        }
+        // for(size_t i = 0; i < NZones; i++) {
+        //     if(i == zone_idx) continue;
+        //     auto &tlock = zones_[i].lock;
+        //     tlock.unlock();
+        // }
     }
     data_[(idx / NZones)] = v;
     zones_[zone_idx].size_per_zone_ = idx / NZones + 1;
@@ -354,19 +356,20 @@ std::vector<T> SyncVector<NZones, T, Allocator, Lock>::get_all_sorted_data() {
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 void SyncVector<NZones, T, Allocator, Lock>::reload(std::vector<T>&& all_data)
 {
-    lock_.lock();
+    // lock_.lock();
     uint32_t pre_size = 0;
     for(size_t i = 0; i < NZones; i++) {
+        std::cout << "zone " << i << " size = " << zones_[i].size_per_zone_ << std::endl;
         auto &zone = zones_[i];
         auto &data_ = zone.data_;
         auto &lock = zone.lock;
-        lock.lock();
+        // lock.lock();
         uint64_t size_ = zones_[i].size_per_zone_;
         std::copy(all_data.begin() + pre_size, all_data.begin() + pre_size + size_, data_);
         pre_size += size_;
-        lock.unlock();
+        // lock.unlock();
     }
-    lock_.unlock();
+    // lock_.unlock();
 }
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>

@@ -183,20 +183,25 @@ void DistributedVector<T, NumZones>::clear_all()
 }
 
 template <typename T, uint64_t NumZones>
-void DistributedVector<T, NumZones>::reload(std::vector<T> data_[])
+void DistributedVector<T, NumZones>::reload(std::vector<T> data_)
 {
-    clear_all();
-    std::vector<Future<void> > futures;
-    for (uint32_t i = 0; i < num_shards_; i++) {
-        futures.emplace_back(shards_[i].__run_async(
-            &VectorShard::template reload, std::move(data_[i])));
-    }
-    for (auto &future : futures) {
-        future.get();
-    }
-    // for(size_t i = 0; i < data_.size(); i++) {
-    //     put(std::forward<uint64_t>(i), std::move(data_[i]));
+    // clear_all();
+    // std::vector<Future<void> > futures;
+    // for (uint32_t i = 0; i < num_shards_; i++) {
+    //     futures.emplace_back(shards_[i].__run_async(
+    //         &VectorShard::template reload, std::move(data_[i])));
     // }
+    
+    // size_t num = 0;
+    // for (auto &future : futures) {
+    //     std::cout << "num = " << ++num << std::endl;
+    //     future.get();
+    // }
+    // std::cout << "data size = " << data_.size() << std::endl; 
+    for(size_t i = 0; i < data_.size(); i++) {
+        // std::cout << "put " << i << std::endl;
+        put(std::forward<uint64_t>(i), std::move(data_[i]));
+    }
 }
 
 template <typename T, uint64_t NumZones>

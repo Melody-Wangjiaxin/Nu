@@ -292,7 +292,7 @@ class Proxy {
                             mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
 
                             std::cout << "start reload" << std::endl;
-                            vec_.reload(vecs_);
+                            vec_.reload(vec_to_sort);
                             std::cout << "reload over" << std::endl;
                             // std::sort(vec_to_sort.begin(), vec_to_sort.end());
                             // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
@@ -324,7 +324,7 @@ class Proxy {
                                 mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
                                 
                                 std::cout << "start reload" << std::endl;
-                                vec_.reload(vecs_);
+                                vec_.reload(vec_to_sort);
                                 std::cout << "reload over" << std::endl;
                                 // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
                                 // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);

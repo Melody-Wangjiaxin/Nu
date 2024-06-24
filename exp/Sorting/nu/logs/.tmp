@@ -1,0 +1,12 @@
+CPU 21| <5> cpu: detected 48 cores, 1 nodes
+CPU 21| <5> time: detected 2794 ticks / us
+[  0.000492] CPU 21| <5> loading configuration from '.conf_871916'
+[  0.000635] CPU 21| <3> < 1 guaranteed kthreads is not recommended for networked apps
+running with lpid = 1
+start initing...
+finish initing...
+all shard sorting finished
+start sort
+sort over
+start reload
+reload over
