@@ -62,50 +62,24 @@ struct Val {
         }
         return *this;
     }
-
-    // // 移动赋值运算符
-    // Val& operator=(Val&& other) noexcept {
-    //     if (this != &other) {
-    //         delete[] data;
-    //         data = other.data;
-    //         other.data = nullptr;
-    //     }
-    //     return *this;
-    // }
-
+    
     template <class Archive> void serialize(Archive &ar) {
         ar(cereal::binary_data(data, sizeof(data)));
     }
 
     bool operator>(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] > v.data[i];
-        // }
-        // return false;
         return std::memcmp(this->data, v.data, kValLen) > 0;
     }
 
     bool operator<(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] < v.data[i];
-        // }
-        // return false;
         return std::memcmp(this->data, v.data, kValLen) < 0;
     }
 
     bool operator>=(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] >= v.data[i];
-        // }
-        // return true;
         return std::memcmp(this->data, v.data, kValLen) >= 0;
     }
 
     bool operator<=(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] <= v.data[i];
-        // }
-        // return true;
         return std::memcmp(this->data, v.data, kValLen) <= 0;
     }
 };
@@ -137,7 +111,7 @@ using DSVector = nu::DistributedVector<Val>;
 // constexpr static size_t kNum = (1 << DSVector::kDefaultPowerNumShards) *
 //                                     DSVector::kNumPerShard *
 //                                     kLoadFactor; // 80530636
-constexpr static size_t kNum = 500000;
+constexpr static size_t kNum = 1000000;
 
 void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
     for (uint32_t i = 0; i < len; i++) {
@@ -148,7 +122,7 @@ void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
 void init(DSVector *vec) {
     std::vector<nu::Thread> threads;
     constexpr uint32_t kNumThreads = 400;
-    auto num = kNum / kNumThreads;  // 80530636 / 400 = 201326
+    auto num = kNum / kNumThreads;  
     for (uint32_t i = 0; i < kNumThreads; i++) {
         threads.emplace_back([&, tid = i] {
             std::random_device rd;
@@ -243,7 +217,7 @@ std::vector<Val> merge_sort(uint32_t arrays_num, std::vector<Val> arrays[]) {
 
 void mySort(std::vector<Val> vec_to_sort, uint32_t arrays_num, std::vector<Val> arrays[])
 {
-    std::cout << "start sort" << std::endl;
+    // std::cout << "start sort" << std::endl;
     std::sort(vec_to_sort.begin(), vec_to_sort.end());
     std::vector<uint32_t> sizes(arrays_num, 0); // 保存每个数组当前指针的位置
     for (uint32_t i = 0; i < arrays_num; i++) {
@@ -258,10 +232,12 @@ void mySort(std::vector<Val> vec_to_sort, uint32_t arrays_num, std::vector<Val> 
                 vec_to_sort.begin() + pre_size + tmp_size, 
                 arrays[i].begin());
     }
-    std::cout << "sort over" << std::endl;
+    // std::cout << "sort over" << std::endl;
 }
 
 static std::atomic<bool> flag = false;
+uint32_t total_time = 0;
+uint64_t get_shard_start_time = 0;
 class Proxy {
     public:
         Proxy(DSVector vec) : vec_(std::move(vec)) {}
@@ -284,29 +260,37 @@ class Proxy {
                 if (req.end_of_req) {
                     resp.ending = true;
                     BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
-                    std::cout << "ending  break" << std::endl;
                     break;
                 } else if(req.waiting) {
                     if(!flag && got_shard_num >= (1 << DSVector::kDefaultPowerNumShards)) {
                         if(mutex_1.try_lock() && !flag) {
+                            uint64_t start_time = microtime();
                             mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
-
-                            std::cout << "start reload" << std::endl;
                             vec_.reload(vec_to_sort);
-                            std::cout << "reload over" << std::endl;
+                            total_time += (microtime() - start_time);
+                            std::cout << "total time = " << total_time << std::endl;
                             // std::sort(vec_to_sort.begin(), vec_to_sort.end());
                             // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
                             // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);
-                            
-                            // std::cout << "start reload 2" << std::endl;
-                            // vec_.reload(res);
-                            // std::cout << "reload over 2" << std::endl;
-                            
                             flag = true;
                             resp.ending = true;
                             resp.all_data_sorted = true;
                             mutex_1.unlock();
-                        }                        
+                        } else {
+                            bool is_local;
+                            auto optional_v = vec_.get(std::forward<uint64_t>(req.idx), &is_local);
+                            resp.found = optional_v.has_value();
+                            if (resp.found) {
+                                resp.val = *optional_v;
+                            }
+                            auto id = vec_.get_shard_proclet_id(req.shard_id);
+                            if (is_local) {
+                                resp.latest_shard_ip = 0;
+                            } else {
+                                resp.latest_shard_ip =
+                                    nu::get_runtime()->rpc_client_mgr()->get_ip_by_proclet_id(id);
+                            }
+                        }                   
                     }
                     BUG_ON(c->WriteFull(&resp, sizeof(resp)) < 0);
                     continue;
@@ -320,18 +304,13 @@ class Proxy {
                     if(req.to_sort) {
                         if(!flag && got_shard_num >= (1 << DSVector::kDefaultPowerNumShards)) {
                             if(mutex_1.try_lock() && !flag) {
-                                // std::cout << "start sort 1" << std::endl;
+                                uint64_t start_time = microtime();
                                 mySort(vec_to_sort, 1 << DSVector::kDefaultPowerNumShards, vecs_);
-                                
-                                std::cout << "start reload" << std::endl;
                                 vec_.reload(vec_to_sort);
-                                std::cout << "reload over" << std::endl;
+                                total_time += (microtime() - start_time);
+                                std::cout << "total time = " << total_time << std::endl;
                                 // std::vector<Val> res = merge_sort(1 << DSVector::kDefaultPowerNumShards, vecs_);
                                 // std::vector<Val> res = mergeSortedArrays(1 << DSVector::kDefaultPowerNumShards, vecs_);
-                                // std::cout << "sort over 1" << std::endl;
-                                // std::cout << "start reload 1" << std::endl;
-                                // vec_.reload(res);
-                                // std::cout << "reload over 1" << std::endl;
                                 resp.ending = true;
                                 flag = true;
                                 mutex_1.unlock();
@@ -340,20 +319,13 @@ class Proxy {
                         } else {
                             resp.all_data_sorted = false;
                         } 
-                    } 
-                    // else {
-                    //     if(req.to_reload_shard) {
-                    //         std::cout << "start reload" << std::endl;
-                    //         vec_.clear_all();
-                    //         std::cout << "reload over" << std::endl;
-                    //         resp.reload_shard_finished = true;
-                    //         resp.latest_shard_ip = 0;
-                    //         resp.ending = true;
-                    //     }
-                    // }          
+                    }          
                 } else {
+                    if(!get_shard_start_time) get_shard_start_time = microtime();
                     resp.shard_sort_finished = false;
+                    // uint64_t start_time = microtime();
                     vecs_[req.shard_id] = vec_.get_data_in_shard(std::forward<uint32_t>(req.shard_id), &is_local);
+                    // total_time += (microtime() - start_time);
                     mutex_2.lock();
                     vec_to_sort.insert(vec_to_sort.end(), 
                                         vecs_[req.shard_id].begin(), 
@@ -361,6 +333,7 @@ class Proxy {
                     got_shard_num++;
                     // std::cout << "got shard num " << got_shard_num << std::endl;
                     if(got_shard_num == (1 << DSVector::kDefaultPowerNumShards)) {
+                        total_time += (microtime() - get_shard_start_time);
                         resp.shard_sort_finished = true;
                         std::cout << "all shard sorting finished" << std::endl;
                     }

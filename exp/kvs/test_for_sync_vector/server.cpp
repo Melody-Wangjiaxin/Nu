@@ -63,49 +63,23 @@ struct Val {
         return *this;
     }
 
-    // // 移动赋值运算符
-    // Val& operator=(Val&& other) noexcept {
-    //     if (this != &other) {
-    //         delete[] data;
-    //         data = other.data;
-    //         other.data = nullptr;
-    //     }
-    //     return *this;
-    // }
-
     template <class Archive> void serialize(Archive &ar) {
         ar(cereal::binary_data(data, sizeof(data)));
     }
 
     bool operator>(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] > v.data[i];
-        // }
-        // return false;
         return std::memcmp(this->data, v.data, kValLen) > 0;
     }
 
     bool operator<(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] < v.data[i];
-        // }
-        // return false;
         return std::memcmp(this->data, v.data, kValLen) < 0;
     }
 
     bool operator>=(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] >= v.data[i];
-        // }
-        // return true;
         return std::memcmp(this->data, v.data, kValLen) >= 0;
     }
 
     bool operator<=(const Val &v) const {
-        // for(size_t i = 0; i < kValLen; i++) {
-        //     if(data[i] != v.data[i]) return data[i] <= v.data[i];
-        // }
-        // return true;
         return std::memcmp(this->data, v.data, kValLen) <= 0;
     }
 };
@@ -137,7 +111,7 @@ using DSVector = nu::DistributedVector<Val>;
 // constexpr static size_t kNum = (1 << DSVector::kDefaultPowerNumShards) *
 //                                     DSVector::kNumPerShard *
 //                                     kLoadFactor; // 80530636
-constexpr static size_t kNum = 500000;
+constexpr static size_t kNum = 1000000;
 
 void random_str(auto &dist, auto &mt, uint32_t len, char *buf) {
     for (uint32_t i = 0; i < len; i++) {

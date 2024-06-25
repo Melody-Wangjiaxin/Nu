@@ -140,20 +140,20 @@ void SyncVector<NZones, T, Allocator, Lock>::resize(uint64_t new_capacity) {
 
 template <size_t NZones, typename T, typename Allocator, typename Lock>
 T *SyncVector<NZones, T, Allocator, Lock>::get(uint64_t &&idx) {
-    lock_.lock();
+    // lock_.lock();
     auto zone_idx = idx % NZones;
     auto &zone = zones_[zone_idx];
     auto &data_ = zone.data_;
     auto &lock = zone.lock;
     lock.lock();
-    if(idx < size_) {
+    if(idx / NZones < zone.size_per_zone_) {
         auto ret = reinterpret_cast<T *>(data_ + (idx / NZones));
         lock.unlock();
-        lock_.unlock();
+        // lock_.unlock();
         return ret;
     }
     lock.unlock();
-    lock_.unlock();
+    // lock_.unlock();
     return nullptr;
 }
 
@@ -184,8 +184,7 @@ void SyncVector<NZones, T, Allocator, Lock>::put(uint64_t &&idx, T1 v) {
     auto &zone = zones_[zone_idx];
     auto &data_ = zone.data_;
     auto &lock = zone.lock;
-    lock.lock();
-    if (idx >= capacity_) {
+    while (idx >= capacity_) {
         // for(size_t i = 0; i < NZones; i++) {
         //     if(i == zone_idx) continue;
         //     auto &tlock = zones_[i].lock;
@@ -198,6 +197,7 @@ void SyncVector<NZones, T, Allocator, Lock>::put(uint64_t &&idx, T1 v) {
         //     tlock.unlock();
         // }
     }
+    lock.lock();
     data_[(idx / NZones)] = v;
     zones_[zone_idx].size_per_zone_ = idx / NZones + 1;
     if (idx >= size_) {

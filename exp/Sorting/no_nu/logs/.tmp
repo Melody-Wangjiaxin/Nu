@@ -1,0 +1,7 @@
+CPU 15| <5> cpu: detected 48 cores, 1 nodes
+CPU 15| <5> time: detected 2794 ticks / us
+[  0.000411] CPU 15| <5> loading configuration from '.conf_220628'
+[  0.000557] CPU 29| <3> < 1 guaranteed kthreads is not recommended for networked apps
+running with lpid = 1
+start initing...
+finish initing...
